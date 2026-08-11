@@ -118,17 +118,12 @@ const { title, content } = req.body;`,
         description:
           "Der Router allein tut nichts — er muss in der App eingehängt werden. Das Präfix steht dort, nicht in der Route selbst. Deshalb schreibst du in der Route nur '/' und '/:id'.",
         code: `// server.ts
-app.use(express.json());              // JSON-Body überhaupt lesen können
-app.use("/tasks", taskRouter);        // Präfix für alle Routen im Router
-app.use("/categories", categoryRouter);`,
-      },
-      {
-        label: ":id im Pfad und req.params zusammen",
-        description:
-          "Beides gehört zusammen. Steht :id im Pfad, muss req.params.id im Handler ausgepackt und geprüft werden. Fehlt der Platzhalter im Pfad, ist req.params.id undefined und Number(undefined) ergibt NaN — jeder Request bleibt am ID-Guard hängen.",
+                    app.use(express.json());              // JSON-Body überhaupt lesen können
+                    app.use("/tasks", taskRouter);        // Präfix für alle Routen im Router
+                    app.use("/categories", categoryRouter);`,
         code: `router.patch("/:id", ...)              // Platzhalter im Pfad
-const id = Number(req.params.id);      // auspacken
-if (Number.isNaN(id)) { ... }          // prüfen`,
+                    const id = Number(req.params.id);      // auspacken
+                    if (Number.isNaN(id)) { ... }          // prüfen`,
       },
       {
         label: "findFirst statt findUnique bei mehreren Filtern",
@@ -235,7 +230,6 @@ if (!note) { ... }`,
     ],
   },
 
-  // =====================================================================
   {
     id: "4",
     title: "Guard Clauses",
@@ -246,12 +240,12 @@ if (!note) { ... }`,
         description:
           "Eine Prüfung ganz am Anfang, die bei ungültigem Zustand sofort aussteigt — bevor irgendwas passiert. Türsteher: Wer die Bedingungen nicht erfüllt, kommt gar nicht erst rein. Weiter geht es nur, wenn die Prüfung DURCHGEHT.",
         code: `if (!userId) {
-  return res.status(401).json({ error: "Nicht eingeloggt" });
-}
-//  ^        ^                  ^
-//  |        |                  Meldung an den Client
-//  |        raus hier — Rest der Funktion wird übersprungen
-//  "wenn NICHT vorhanden"`,
+                return res.status(401).json({ error: "Nicht eingeloggt" });
+                }
+                //  ^        ^                  ^
+                //  |        |                  Meldung an den Client
+                //  |        raus hier — Rest der Funktion wird übersprungen
+                //  "wenn NICHT vorhanden"`,
       },
       {
         label: "Warum im Backend zwingend",
@@ -263,77 +257,77 @@ if (!note) { ... }`,
         description:
           "Ohne Guard Clauses landest du in einer if/else-Pyramide, in der die eigentliche Arbeit ganz innen versteckt ist. Der Trick ist immer derselbe: Bedingung umdrehen mit ! und früh raus. Ergebnis: alle Sonderfälle oben abgehandelt, der Normalfall unten und unverschachtelt.",
         code: `// VORHER — Pyramide
-if (userId) {
-  if (id) {
-    if (task) {
-      // die eigentliche Arbeit, drei Ebenen tief
-    } else { ... }
-  } else { ... }
-} else { ... }
+                if (userId) {
+                if (id) {
+                    if (task) {
+                    // die eigentliche Arbeit, drei Ebenen tief
+                    } else { ... }
+                } else { ... }
+                } else { ... }
 
-// NACHHER — Guard Clauses
-if (!userId) return res.status(401).json({ error: "..." });
-if (!id)     return res.status(400).json({ error: "..." });
-if (!task)   return res.status(404).json({ error: "..." });
+                // NACHHER — Guard Clauses
+                if (!userId) return res.status(401).json({ error: "..." });
+                if (!id)     return res.status(400).json({ error: "..." });
+                if (!task)   return res.status(404).json({ error: "..." });
 
-// die eigentliche Arbeit — ganz links, gut lesbar`,
+                // die eigentliche Arbeit — ganz links, gut lesbar`,
       },
       {
         label: "return niemals vergessen",
         description:
           "Das ist die gefährlichste Stelle. Ohne return geht die Fehlerantwort zwar raus, aber die Funktion läuft trotzdem weiter: Sie löscht den Task, den sie eigentlich ablehnen wollte, und schickt danach eine ZWEITE Antwort. Express wirft dann 'Cannot set headers after they are sent'. Die Prüfung sieht im Code aus, als würde sie schützen — tut es aber nicht.",
         code: `// FALSCH
-if (!userId) {
-  res.status(401).json({ error: "Nicht eingeloggt" });
-}
-await prisma.task.delete({ where: { id } });   // läuft trotzdem!
+                if (!userId) {
+                res.status(401).json({ error: "Nicht eingeloggt" });
+                }
+                await prisma.task.delete({ where: { id } });   // läuft trotzdem!
 
-// RICHTIG
-if (!userId) {
-  return res.status(401).json({ error: "Nicht eingeloggt" });
-}`,
+                // RICHTIG
+                if (!userId) {
+                return res.status(401).json({ error: "Nicht eingeloggt" });
+                }`,
       },
       {
         label: "In einer normalen Funktion",
         description:
           "Ohne Express gibt es kein res. Dort brichst du mit throw ab. Der Fehler fliegt dann nach oben zum nächsten catch.",
         code: `function begruesse(name: string | undefined) {
-  if (!name) {
-    throw new Error("Ungültiger Name");
-  }
+                if (!name) {
+                    throw new Error("Ungültiger Name");
+                }
 
-  return "Hallo " + name;   // hier ist name garantiert ein string
-}`,
+                return "Hallo " + name;   // hier ist name garantiert ein string
+                }`,
       },
       {
         label: "Type Narrowing als Nebeneffekt",
         description:
           "Nach der Guard Clause weiß TypeScript, dass der Wert nicht mehr undefined oder null sein kann — die Funktion käme sonst gar nicht bis dahin. Deshalb darfst du danach ohne ? damit arbeiten. Fahr mit der Maus über die Variable, dann siehst du den engeren Typ. Dasselbe Prinzip wie bei && im JSX.",
         code: `const task = await prisma.task.findUnique({ where: { id } });
-// task ist hier:  Task | null
+                // task ist hier:  Task | null
 
-if (!task) {
-  return res.status(404).json({ error: "Nicht gefunden" });
-}
+                if (!task) {
+                return res.status(404).json({ error: "Nicht gefunden" });
+                }
 
-// task ist ab hier:  Task     — kein ?. mehr nötig
-console.log(task.title);`,
+                // task ist ab hier:  Task     — kein ?. mehr nötig
+                console.log(task.title);`,
       },
       {
         label: "404 statt 403 bei fremden Daten",
         description:
           "403 würde bedeuten 'existiert, gehört dir aber nicht' — damit verrätst du, dass die ID echt ist. Ein Angreifer könnte IDs durchprobieren und herausfinden, was existiert. 404 sagt schlicht 'gibt es nicht für dich'. Gleiches Prinzip wie die generische Meldung beim Login: nach außen so wenig verraten wie möglich.",
         code: `// Existenz und Ownership in EINER Prüfung — beides ergibt 404
-if (!task || task.userId !== userId) {
-  return res.status(404).json({ error: "Task nicht gefunden" });
-}`,
+                if (!task || task.userId !== userId) {
+                return res.status(404).json({ error: "Task nicht gefunden" });
+                }`,
       },
       {
         label: "!id vs Number.isNaN(id) — Fallstrick",
         description:
           "Number('abc') ergibt NaN, und !NaN ist true — das fängt der einfache Check. ABER: Number('0') ergibt 0, und !0 ist ebenfalls true. Der Guard würde die ID 0 ablehnen, obwohl sie gültig sein könnte. Bei Prisma-Autoincrement fängt die Zählung bei 1 an, also folgenlos — sauberer ist trotzdem der explizite Check. Derselbe Fallstrick wie || vs ??.",
         code: `if (!id) { ... }                 // lehnt auch 0 ab
-if (Number.isNaN(id)) { ... }    // prüft genau das, was gemeint ist`,
+                if (Number.isNaN(id)) { ... }    // prüft genau das, was gemeint ist`,
       },
     ],
   },
@@ -359,13 +353,13 @@ if (Number.isNaN(id)) { ... }    // prüft genau das, was gemeint ist`,
         description:
           "catch läuft NICHT immer. Geht im try alles glatt, wird der catch-Block komplett übersprungen — anders als bei if/else, wo immer genau ein Zweig läuft. Und was catch macht, wenn es zuschlägt: Es überspringt den REST des try-Blocks. Beendet wird die Funktion erst durch das return im catch.",
         code: `try {
-  const task = await prisma.task.findUnique({ where: { id } });
-  await prisma.task.delete({ where: { id } });   // wird übersprungen,
-  return res.status(204).send();                 // wenn oben was wirft
-} catch (error) {
-  console.error(error);                          // Details für dich
-  return res.status(500).json({ error: "Serverfehler" });
-}`,
+                const task = await prisma.task.findUnique({ where: { id } });
+                await prisma.task.delete({ where: { id } });   // wird übersprungen,
+                return res.status(204).send();                 // wenn oben was wirft
+                } catch (error) {
+                console.error(error);                          // Details für dich
+                return res.status(500).json({ error: "Serverfehler" });
+                }`,
       },
       {
         label: "throw und catch sind ein Paar",
@@ -382,34 +376,34 @@ if (Number.isNaN(id)) { ... }    // prüft genau das, was gemeint ist`,
         description:
           "return beendet die Funktion. res beantwortet den Request. Eine Express-Route gibt nichts an einen Aufrufer zurück, denn es gibt keinen — der Client sitzt am anderen Ende einer HTTP-Verbindung, nicht in deinem Code. Mit return task passiert nichts: Express ignoriert den Wert, der Request hängt. Bei return res.json(task) macht das res die Arbeit, das return sorgt nur dafür, dass danach nichts mehr läuft.",
         code: `return task;                    // ❌ Client bekommt nie eine Antwort
-return res.json(task);          // ✅
+                return res.json(task);          // ✅
 
-// Die res-Methoden:
-res.json(daten)                 // Daten als JSON
-res.status(201).json(daten)     // mit Statuscode
-res.status(204).send()          // ohne Body
-// res.log() gibt es NICHT — Loggen ist console.error`,
+                // Die res-Methoden:
+                res.json(daten)                 // Daten als JSON
+                res.status(201).json(daten)     // mit Statuscode
+                res.status(204).send()          // ohne Body
+                // res.log() gibt es NICHT — Loggen ist console.error`,
       },
       {
         label: "Loggen und Antworten sind getrennt",
         description:
           "console.error(error) schreibt ins Terminal, wo dein Server läuft — mit allen Details, für dich. Der Client bekommt eine generische Meldung. Echte Fehlertexte enthalten oft Interna: Tabellennamen, Spaltennamen, Dateipfade, manchmal Teile der Datenbank-URL. Das gehört nicht nach außen.",
         code: `// FALSCH
-return res.status(500).json({ error: error.message });
+                return res.status(500).json({ error: error.message });
 
-// RICHTIG
-console.error(error);
-return res.status(500).json({ error: "Serverfehler" });`,
+                // RICHTIG
+                console.error(error);
+                return res.status(500).json({ error: "Serverfehler" });`,
       },
       {
         label: "catch (error) ist unknown",
         description:
           "TypeScript gibt error den Typ unknown, weil theoretisch alles geworfen werden kann — nicht nur ein Error-Objekt. Willst du an die Nachricht ran, musst du erst prüfen. Für den Anfang reicht console.error(error).",
         code: `catch (error) {
-  const nachricht = error instanceof Error ? error.message : "Unbekannt";
-  console.error(nachricht);
-  return res.status(500).json({ error: "Serverfehler" });
-}`,
+                const nachricht = error instanceof Error ? error.message : "Unbekannt";
+                console.error(nachricht);
+                return res.status(500).json({ error: "Serverfehler" });
+                }`,
       },
     ],
   },
