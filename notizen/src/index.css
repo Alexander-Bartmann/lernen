@@ -1,0 +1,260 @@
+/* ---------- Tokens ---------- */
+:root {
+  --bg: #14181f;
+  --flaeche: #1b212b;
+  --flaeche-hoch: #222a36;
+  --rand: #2e3846;
+  --text: #e4e8ef;
+  --text-leise: #8d99ab;
+  --akzent: #4ec9b0;
+  --code: #ce9178;
+
+  --mono:
+    ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Consolas,
+    monospace;
+  --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --r: 6px;
+}
+
+/* ---------- Reset ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+figure {
+  margin: 0;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- Layout ---------- */
+.app {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+
+/* ---------- Kopf ---------- */
+.kopf {
+  border-bottom: 1px solid var(--rand);
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+}
+
+.kopf__titel {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.kopf__zeile {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-leise);
+  margin-top: 4px;
+}
+
+/* ---------- Reiter ---------- */
+.reiter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.reiter__btn {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text-leise);
+  background: var(--flaeche);
+  border: 1px solid var(--rand);
+  border-radius: var(--r);
+  padding: 8px 14px;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.reiter__btn:hover {
+  color: var(--text);
+  background: var(--flaeche-hoch);
+}
+
+.reiter__btn.ist-aktiv {
+  color: var(--akzent);
+  border-color: var(--akzent);
+  background: var(--flaeche-hoch);
+}
+
+/* ---------- Inhalt ---------- */
+.inhalt__kopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.inhalt__titel {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.schliessen {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text-leise);
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.schliessen:hover {
+  color: var(--text);
+}
+
+.leer {
+  color: var(--text-leise);
+  font-size: 0.92rem;
+}
+
+/* ---------- Liste ---------- */
+.liste {
+  display: grid;
+  gap: 12px;
+}
+
+.karte {
+  background: var(--flaeche);
+  border: 1px solid var(--rand);
+  border-left: 2px solid var(--akzent);
+  border-radius: var(--r);
+  padding: 14px 16px;
+}
+
+.karte__titel {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--akzent);
+  margin-bottom: 4px;
+}
+
+.karte__text {
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.karte__code {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--code);
+  background: var(--bg);
+  border: 1px solid var(--rand);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  margin-top: 10px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ---------- Tabelle ---------- */
+.tabelle__rahmen {
+  overflow-x: auto;
+  border: 1px solid var(--rand);
+  border-radius: var(--r);
+}
+
+.tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 480px;
+}
+
+.tabelle th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-leise);
+  font-weight: 500;
+  padding: 12px 16px;
+  background: var(--flaeche);
+  border-bottom: 1px solid var(--rand);
+}
+
+.tabelle td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rand);
+  vertical-align: top;
+}
+
+.tabelle tr:last-child td {
+  border-bottom: none;
+}
+
+.tabelle tbody tr:hover {
+  background: var(--flaeche);
+}
+
+.marke {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--akzent);
+  white-space: nowrap;
+}
+
+.gedimmt {
+  color: var(--text-leise);
+}
+
+/* ---------- Zugänglichkeit ---------- */
+:focus-visible {
+  outline: 2px solid var(--akzent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
+
+/* ---------- Ab Tablet ---------- */
+@media (min-width: 640px) {
+  .app {
+    padding: 48px 32px 96px;
+  }
+
+  .kopf__titel {
+    font-size: 1.75rem;
+  }
+}
