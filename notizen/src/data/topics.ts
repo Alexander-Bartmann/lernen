@@ -24,37 +24,37 @@ export const topics: Topic[] = [
         description:
           "Sechs Abschnitte, immer in dieser Reihenfolge. Nur die Prüfungen und die Aktion in der Mitte ändern sich. Wenn du nicht weiterweißt: dieses Gerüst hinschreiben und Stück für Stück füllen.",
         code: `router.delete("/:id", requireAuth, async (req, res) => {
-  // 1 — AUSPACKEN: was kommt von außen rein?
-  const userId = req.userId;              // aus der Middleware
-  const id = Number(req.params.id);       // aus der URL, kommt als Text
+                // 1 — AUSPACKEN: was kommt von außen rein?
+                const userId = req.userId;              // aus der Middleware
+                const id = Number(req.params.id);       // aus der URL, kommt als Text
 
-  // 2 — GUARDS ohne Datenbank (billig, deshalb zuerst)
-  if (!userId) {
-    return res.status(401).json({ error: "Nicht eingeloggt" });
-  }
-  if (Number.isNaN(id)) {
-    return res.status(400).json({ error: "Ungültige ID" });
-  }
+                // 2 — GUARDS ohne Datenbank (billig, deshalb zuerst)
+                if (!userId) {
+                    return res.status(401).json({ error: "Nicht eingeloggt" });
+                }
+                if (Number.isNaN(id)) {
+                    return res.status(400).json({ error: "Ungültige ID" });
+                }
 
-  // 3 — TRY beginnt, wo die Datenbank ins Spiel kommt
-  try {
-    // 4 — HOLEN und prüfen (Existenz + Ownership)
-    const task = await prisma.task.findUnique({ where: { id } });
+                // 3 — TRY beginnt, wo die Datenbank ins Spiel kommt
+                try {
+                    // 4 — HOLEN und prüfen (Existenz + Ownership)
+                    const task = await prisma.task.findUnique({ where: { id } });
 
-    if (!task || task.userId !== userId) {
-      return res.status(404).json({ error: "Task nicht gefunden" });
-    }
+                    if (!task || task.userId !== userId) {
+                    return res.status(404).json({ error: "Task nicht gefunden" });
+                    }
 
-    // 5 — AKTION: ab hier ist alles geprüft und sicher
-    await prisma.task.delete({ where: { id } });
+                    // 5 — AKTION: ab hier ist alles geprüft und sicher
+                    await prisma.task.delete({ where: { id } });
 
-    // 6 — ANTWORT
-    return res.status(204).send();
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Serverfehler" });
-  }
-});`,
+                    // 6 — ANTWORT
+                    return res.status(204).send();
+                } catch (error) {
+                    console.error(error);
+                    return res.status(500).json({ error: "Serverfehler" });
+                }
+                });`,
       },
       {
         label: "Reihenfolge der Prüfungen",
@@ -66,10 +66,10 @@ export const topics: Topic[] = [
         description:
           "Die Route besteht aus drei Teilen: dem Pfad, optionaler Middleware und der Handler-Funktion. Der Doppelpunkt im Pfad macht einen Platzhalter — /:id passt auf /5, /42, /abc. Was da stand, findest du in req.params.id. Der Handler ist async, weil du drin await brauchst.",
         code: `router.get("/", ...)          // GET  /tasks
-router.get("/:id", ...)       // GET  /tasks/5
-router.post("/", ...)         // POST /tasks
-router.patch("/:id", ...)     // PATCH /tasks/5
-router.delete("/:id", ...)    // DELETE /tasks/5`,
+            router.get("/:id", ...)       // GET  /tasks/5
+            router.post("/", ...)         // POST /tasks
+            router.patch("/:id", ...)     // PATCH /tasks/5
+            router.delete("/:id", ...)    // DELETE /tasks/5`,
       },
       {
         label: "Woher kommen die Daten? params / body / query",
@@ -121,6 +121,26 @@ const { title, content } = req.body;`,
 app.use(express.json());              // JSON-Body überhaupt lesen können
 app.use("/tasks", taskRouter);        // Präfix für alle Routen im Router
 app.use("/categories", categoryRouter);`,
+      },
+      {
+        label: ":id im Pfad und req.params zusammen",
+        description:
+          "Beides gehört zusammen. Steht :id im Pfad, muss req.params.id im Handler ausgepackt und geprüft werden. Fehlt der Platzhalter im Pfad, ist req.params.id undefined und Number(undefined) ergibt NaN — jeder Request bleibt am ID-Guard hängen.",
+        code: `router.patch("/:id", ...)              // Platzhalter im Pfad
+const id = Number(req.params.id);      // auspacken
+if (Number.isNaN(id)) { ... }          // prüfen`,
+      },
+      {
+        label: "findFirst statt findUnique bei mehreren Filtern",
+        description:
+          "Willst du Existenz und Ownership in einer Abfrage prüfen, geht das nicht mit findUnique — das erlaubt nur eindeutige Felder. Sobald du nach mehr als dem eindeutigen Feld filterst, ist findFirst richtig.",
+        code: `// findUnique + Prüfung im Code
+const note = await prisma.note.findUnique({ where: { id } });
+if (!note || note.userId !== userId) { ... }
+
+// oder alles in einer Abfrage
+const note = await prisma.note.findFirst({ where: { id, userId } });
+if (!note) { ... }`,
       },
     ],
   },
