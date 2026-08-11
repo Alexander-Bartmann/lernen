@@ -187,4 +187,58 @@ export const topics: Topic[] = [
       },
     ],
   },
+  {
+    id: "4",
+    title: "Guard Clauses",
+    layout: "liste",
+    entries: [
+      {
+        label: "Was ist das",
+        description:
+          "Prüfung ganz am Anfang, die bei ungültigem Zustand sofort aussteigt. Türsteher: wer nicht reindarf, kommt gar nicht erst rein.",
+      },
+      {
+        label: "Warum Backend",
+        description:
+          "Alles von außen ist nicht vertrauenswürdig. Jeder kann die API mit Postman direkt aufrufen und das Frontend umgehen. Frontend-Validierung ist Komfort, Backend-Validierung ist Sicherheit.",
+      },
+      {
+        label: "Flacher Code",
+        description:
+          "Bedingung umdrehen und früh raus, statt if/else-Pyramide. Sonderfälle oben, Normalfall unten und unverschachtelt.",
+      },
+      {
+        label: "return nicht vergessen",
+        description:
+          "Ohne return läuft die Funktion weiter, macht die Aktion trotzdem und schickt eine zweite Antwort. Express wirft dann 'Cannot set headers after they are sent'.",
+        code: 'if (!userId) return res.status(401).json({ error: "..." });',
+      },
+      {
+        label: "In normaler Funktion",
+        description: "Kein res vorhanden, deshalb Abbruch mit throw.",
+        code: 'if (!name) throw new Error("Ungültiger Name");',
+      },
+      {
+        label: "Reihenfolge",
+        description:
+          "Billiges zuerst: 1. eingeloggt (401), 2. Eingabe gültig (400), 3. existiert (404), 4. gehört mir (404), 5. Aktion. DB-Zugriffe erst, wenn die reinen Prüfungen durch sind.",
+      },
+      {
+        label: "404 statt 403",
+        description:
+          "Bei fremden Daten 404 zurückgeben. 403 würde verraten, dass die ID existiert — Angreifer könnten IDs durchprobieren.",
+      },
+      {
+        label: "Type Narrowing",
+        description:
+          "Nach der Guard Clause weiß TypeScript, dass der Wert nicht mehr undefined ist. Danach ohne ? nutzbar.",
+      },
+      {
+        label: "!id vs Number.isNaN(id)",
+        description:
+          "! behandelt 0 und leeren Text wie 'nicht vorhanden'. Bei IDs sauberer Number.isNaN prüfen. Gleicher Fallstrick wie || vs ??.",
+        code: "if (Number.isNaN(id)) return res.status(400)...",
+      },
+    ],
+  },
 ];
