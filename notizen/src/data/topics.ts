@@ -305,4 +305,72 @@ export const topics: Topic[] = [
       },
     ],
   },
+  {
+    id: "6",
+    title: "Prisma",
+    layout: "liste",
+    entries: [
+      {
+        label: "Was ist ein ORM",
+        description:
+          "Übersetzer zwischen TypeScript und SQL. Du schreibst Objekte, Prisma baut daraus SQL und gibt fertige JS-Objekte zurück.",
+      },
+      {
+        label: "Typsicherheit",
+        description:
+          "Prisma generiert Typen aus schema.prisma. Deshalb kennt VS Code deine Felder. Nach jeder Schema-Änderung: npx prisma generate.",
+      },
+      {
+        label: "Warum await",
+        description:
+          "Die DB liegt woanders, die Antwort kommt später. Ohne await hast du ein Promise statt der Daten — und promise.title ist undefined, ohne dass es meckert.",
+      },
+      {
+        label: "async ist Voraussetzung",
+        description:
+          "await geht nur in einer async-Funktion. Deshalb steht bei jeder Route async (req, res) =>.",
+      },
+      {
+        label: "where vs data",
+        description:
+          "where = suchen. data = schreiben. create braucht nur data, delete nur where, update beides.",
+      },
+      {
+        label: "findUnique vs findFirst",
+        description:
+          "findUnique nur über eindeutige Felder (id, @unique) — dafür schneller durch Index. findFirst kann nach allem suchen und nimmt den ersten Treffer.",
+      },
+      {
+        label: "Nichts gefunden",
+        description:
+          "findMany gibt [], findUnique gibt null — beide werfen NICHT. update und delete werfen dagegen. Deshalb erst finden, prüfen, dann ändern.",
+      },
+      {
+        label: "Leeres Array ist kein 404",
+        description:
+          "Ein User ohne Tasks ist normal. [] zurückgeben, das Frontend zeigt den Empty State.",
+      },
+      {
+        label: "Warum erst findUnique",
+        description:
+          "Zwei Gründe: Ownership prüfen (sonst löscht jeder fremde Tasks) und richtiger Statuscode (direktes delete gäbe 500 statt 404).",
+      },
+      {
+        label: "create statt update",
+        description:
+          "Beim Anlegen gibt es noch keine ID — die vergibt die DB. Also kein where, nur data.",
+        code: "await prisma.task.create({ data: { title, userId } });",
+      },
+      {
+        label: "select und include",
+        description:
+          "select holt nur bestimmte Felder. include lädt verknüpfte Daten mit — ohne das kriegst du nur die categoryId, nicht die Kategorie.",
+      },
+      {
+        label: "Statuscodes",
+        description:
+          "POST antwortet 201 Created, GET/PATCH/PUT mit 200, DELETE ohne Body mit 204. 400 Eingabe falsch, 401 nicht eingeloggt, 404 nicht gefunden, 500 Serverfehler.",
+      },
+    ],
+  },
 ];
