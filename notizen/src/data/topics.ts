@@ -241,4 +241,68 @@ export const topics: Topic[] = [
       },
     ],
   },
+  {
+    id: "5",
+    title: "try/catch & res",
+    layout: "liste",
+    entries: [
+      {
+        label: "Guard vs try/catch",
+        description:
+          "Guard Clause fängt ERWARTETE Fehler (ID fehlt, nicht eingeloggt). try/catch fängt UNERWARTETE (DB weg, Verbindung bricht ab). Niemand schreibt if (datenbankIstOffline).",
+      },
+      {
+        label: "Wann läuft catch",
+        description:
+          "Nur wenn im try was geworfen wurde. Geht alles glatt, wird catch komplett übersprungen — anders als else, wo immer ein Zweig läuft.",
+      },
+      {
+        label: "Was catch macht",
+        description:
+          "Überspringt den REST des try-Blocks. Die Funktion beendet erst das return im catch.",
+      },
+      {
+        label: "throw und catch",
+        description:
+          "Ein Paar. throw wirft, catch fängt — auch über Funktionsgrenzen hinweg. Prisma wirft intern, dein catch fängt es.",
+      },
+      {
+        label: "await braucht try",
+        description:
+          "await wirft den Fehler, wenn das Warten schiefgeht. Deshalb steht im Backend fast jeder await-Aufruf in einem try.",
+      },
+      {
+        label: "Ohne catch",
+        description:
+          "Client bekommt gar keine Antwort und hängt. Im schlimmsten Fall stirbt der ganze Server, nicht nur dieser Request.",
+      },
+      {
+        label: "return vs res",
+        description:
+          "return beendet die Funktion. res beantwortet den Request. Eine Route gibt nichts an einen Aufrufer zurück — es gibt keinen. Nur res antwortet.",
+        code: "return res.json(tasks);",
+      },
+      {
+        label: "res-Methoden",
+        description:
+          "json() für Daten, send() für leer, status() setzt den Code. Kein log() — das ist console.error.",
+      },
+      {
+        label: "Loggen vs antworten",
+        description:
+          "console.error(error) mit allen Details in die Server-Logs. Generische Meldung an den Client. Echte Fehlertexte verraten Tabellennamen, Pfade, teils die DB-URL.",
+        code: 'console.error(error);\nreturn res.status(500).json({ error: "Serverfehler" });',
+      },
+      {
+        label: "catch (error) ist unknown",
+        description:
+          "TypeScript typt error als unknown, weil alles geworfen werden kann. Für die Nachricht erst prüfen: error instanceof Error.",
+      },
+      {
+        label: "Guards außerhalb des try",
+        description:
+          "Guards brauchen kein try, da kann nichts unvorhergesehen schiefgehen. Das try beginnt erst, wo die DB ins Spiel kommt.",
+      },
+    ],
+  },
 ];
