@@ -13,411 +13,406 @@ export interface Topic {
 }
 
 export const topics: Topic[] = [
-  // =====================================================================
+  // ===================================================================
   {
-    id: "1",
+    id: "route",
     title: "Route komplett",
     layout: "liste",
     entries: [
       {
-        label: "Die Anatomie — jede Route sieht so aus",
+        label: "Die 6 Fragen — das Grundmuster",
         description:
-          "Sechs Abschnitte, immer in dieser Reihenfolge. Nur die Prüfungen und die Aktion in der Mitte ändern sich. Wenn du nicht weiterweißt: dieses Gerüst hinschreiben und Stück für Stück füllen.",
-        code: `router.delete("/:id", requireAuth, async (req, res) => {
-                // 1 — AUSPACKEN: was kommt von außen rein?
-                const userId = req.userId;              // aus der Middleware
-                const id = Number(req.params.id);       // aus der URL, kommt als Text
-
-                // 2 — GUARDS ohne Datenbank (billig, deshalb zuerst)
-                if (!userId) {
-                    return res.status(401).json({ error: "Nicht eingeloggt" });
-                }
-                if (Number.isNaN(id)) {
-                    return res.status(400).json({ error: "Ungültige ID" });
-                }
-
-                // 3 — TRY beginnt, wo die Datenbank ins Spiel kommt
-                try {
-                    // 4 — HOLEN und prüfen (Existenz + Ownership)
-                    const task = await prisma.task.findUnique({ where: { id } });
-
-                    if (!task || task.userId !== userId) {
-                    return res.status(404).json({ error: "Task nicht gefunden" });
-                    }
-
-                    // 5 — AKTION: ab hier ist alles geprüft und sicher
-                    await prisma.task.delete({ where: { id } });
-
-                    // 6 — ANTWORT
-                    return res.status(204).send();
-                } catch (error) {
-                    console.error(error);
-                    return res.status(500).json({ error: "Serverfehler" });
-                }
-                });`,
+          "Jede Route beantwortet dieselben sechs Fragen. Nur die Antworten ändern sich. Wenn du nicht weiterweißt: diese Liste durchgehen, dann steht die Route. 1) Was kommt rein? 2) Ist es gültig? 3) Was brauche ich aus der DB? 4) Darf ich das? 5) Was tue ich? 6) Was antworte ich? Bei POST fallen 3 und 4 oft weg (es gibt noch nichts zu holen), bei GET fällt 4 weg.",
       },
       {
-        label: "Reihenfolge der Prüfungen",
+        label: "GET — Liste holen (die einfachste Route)",
         description:
-          "Von grob nach fein, billig vor teuer. 1) Eingeloggt? → 401. 2) Eingabe gültig? → 400. 3) Existiert der Datensatz? → 404. 4) Gehört er mir? → 404. 5) Erst jetzt die Aktion. Die ersten beiden brauchen keine Datenbank — wenn die ID sowieso Müll ist, musst du die DB gar nicht erst fragen.",
+          "Keine ID, kein Body, kein Ownership-Check. Nur: eingeloggt? Dann alles holen, was dem User gehört. Ein leeres Array ist KEIN Fehler — ein User ohne Tasks ist normal.",
+        code: `app.get("/tasks", requireAuth, async (req, res) => {
+  // 1 — auspacken
+  const userId = req.userId;
+
+  // 2 — Guard
+  if (!userId) {
+    return res.status(401).json({ error: "Nicht eingeloggt" });
+  }
+
+  // 3 — holen + antworten
+  try {
+    const tasks = await prisma.task.findMany({ where: { userId } });
+    return res.json(tasks);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Serverfehler" });
+  }
+});`,
       },
       {
-        label: "router.METHODE(pfad, middleware, handler)",
+        label: "POST — neu anlegen",
         description:
-          "Die Route besteht aus drei Teilen: dem Pfad, optionaler Middleware und der Handler-Funktion. Der Doppelpunkt im Pfad macht einen Platzhalter — /:id passt auf /5, /42, /abc. Was da stand, findest du in req.params.id. Der Handler ist async, weil du drin await brauchst.",
-        code: `router.get("/", ...)          // GET  /tasks
-            router.get("/:id", ...)       // GET  /tasks/5
-            router.post("/", ...)         // POST /tasks
-            router.patch("/:id", ...)     // PATCH /tasks/5
-            router.delete("/:id", ...)    // DELETE /tasks/5`,
+          "Hier kommt ein Body rein, also braucht es Zod. Kein findUnique nötig — es gibt ja noch nichts zu suchen. Deshalb auch nur data bei Prisma, kein where. Antwort ist 201.",
+        code: `app.post("/tasks", requireAuth, async (req, res) => {
+  // 1 + 2 — Body prüfen (Zod), DANN erst der Rest
+  const result = taskSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ error: "Ungültige Daten" });
+  }
+
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ error: "Nicht eingeloggt" });
+  }
+
+  // 5 + 6 — anlegen + antworten
+  try {
+    const newTask = await prisma.task.create({
+      data: {
+        ...result.data,      // alle geprüften Felder aus dem Body
+        done: false,         // Standardwert
+        userId,              // wem gehört es
+      },
+    });
+    return res.status(201).json(newTask);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Serverfehler" });
+  }
+});`,
+      },
+      {
+        label: "PATCH — ein Feld ändern (z. B. done umschalten)",
+        description:
+          "Jetzt ist eine ID im Spiel. Also: ID auspacken, prüfen, Datensatz holen, Ownership prüfen, DANN ändern. Der Datensatz muss vorher geholt werden, weil du den alten Wert brauchst, um ihn umzudrehen.",
+        code: `app.patch("/tasks/:id", requireAuth, async (req, res) => {
+  // 1 — auspacken
+  const userId = req.userId;
+  const id = req.params.id;
+
+  // 2 — Guards
+  if (!userId) {
+    return res.status(401).json({ error: "Nicht eingeloggt" });
+  }
+  if (!id) {
+    return res.status(400).json({ error: "Ungültige ID" });
+  }
+
+  try {
+    // 3 + 4 — holen und prüfen: existiert es und gehört es mir?
+    const task = await prisma.task.findUnique({ where: { id, userId } });
+    if (!task) {
+      return res.status(404).json({ error: "Task nicht gefunden" });
+    }
+
+    // 5 + 6 — ändern + antworten
+    const updatedTask = await prisma.task.update({
+      where: { id },
+      data: { done: !task.done },
+    });
+    return res.json(updatedTask);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Serverfehler" });
+  }
+});`,
+      },
+      {
+        label: "PUT — alles überschreiben",
+        description:
+          "Wie PATCH, aber mit Body — also zusätzlich Zod ganz oben. Statt einem Feld wird der ganze Datensatz mit result.data ersetzt.",
+        code: `app.put("/tasks/:id", requireAuth, async (req, res) => {
+  const result = taskSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ error: "Ungültige Daten" });
+  }
+
+  const userId = req.userId;
+  const id = req.params.id;
+
+  if (!userId) return res.status(401).json({ error: "Nicht eingeloggt" });
+  if (!id)     return res.status(400).json({ error: "Ungültige ID" });
+
+  try {
+    const task = await prisma.task.findUnique({ where: { id, userId } });
+    if (!task) {
+      return res.status(404).json({ error: "Task nicht gefunden" });
+    }
+
+    const updatedTask = await prisma.task.update({
+      where: { id },
+      data: result.data,      // ALLE Felder ersetzen
+    });
+    return res.json(updatedTask);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Serverfehler" });
+  }
+});`,
+      },
+      {
+        label: "DELETE — löschen",
+        description:
+          "Wie PATCH, nur ohne Body und ohne Zod. Erst holen und Ownership prüfen, dann löschen. Antwort ist 204 — es gibt nichts zurückzugeben.",
+        code: `app.delete("/tasks/:id", requireAuth, async (req, res) => {
+  const userId = req.userId;
+  const id = req.params.id;
+
+  if (!userId) return res.status(401).json({ error: "Nicht eingeloggt" });
+  if (!id)     return res.status(400).json({ error: "Ungültige ID" });
+
+  try {
+    const task = await prisma.task.findUnique({ where: { id, userId } });
+    if (!task) {
+      return res.status(404).json({ error: "Task nicht gefunden" });
+    }
+
+    await prisma.task.delete({ where: { id } });
+    return res.status(204).send();
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Serverfehler" });
+  }
+});`,
       },
       {
         label: "Woher kommen die Daten? params / body / query",
         description:
-          "Drei Quellen, drei Zwecke. req.params kommt aus dem Pfad und ist IMMER ein String — deshalb Number() drumherum. req.body ist der JSON-Inhalt bei POST/PUT/PATCH; damit der ankommt, braucht die App express.json(). req.query sind die Parameter hinter dem Fragezeichen, gut für Filter und Suche.",
+          "Drei Quellen. req.params ist der Platzhalter aus dem Pfad und IMMER ein Text. req.body ist der JSON-Inhalt bei POST/PUT/PATCH — dafür braucht die App express.json(). req.query steht hinter dem Fragezeichen, gut für Filter und Suche.",
         code: `// GET /tasks/5?done=true   mit Body { "title": "Neu" }
 
-req.params.id      // "5"      — aus dem Pfad, immer String
-req.query.done     // "true"   — hinter dem ?, immer String
-req.body.title     // "Neu"    — der JSON-Body
+req.params.id      // "5"      aus dem Pfad
+req.query.done     // "true"   hinter dem ?
+req.body.title     // "Neu"    der JSON-Body
 
-// Auspacken per Destructuring:
-const { title, content } = req.body;`,
+// mehrere auf einmal auspacken:
+const { title, text } = req.body;
+
+// bei Zahlen-IDs umwandeln (bei Text-IDs wie cuid NICHT nötig):
+const id = Number(req.params.id);`,
       },
       {
-        label: "Was requireAuth macht",
+        label: ":id im Pfad und req.params gehören zusammen",
         description:
-          "Middleware läuft VOR dem Handler. Sie liest den Token aus dem Authorization-Header, prüft ihn und hängt die userId an den Request. Danach ruft sie next() auf — erst dadurch läuft deine Route weiter. Ohne next() hängt der Request. Ist der Token ungültig, antwortet die Middleware selbst mit 401 und der Handler wird nie erreicht.",
-        code: `export function requireAuth(req, res, next) {
-  const header = req.headers.authorization;      // "Bearer eyJhbGci..."
-
-  if (!header) {
-    return res.status(401).json({ error: "Nicht eingeloggt" });
-  }
-
-  const token = header.split(" ")[1];            // das "Bearer " abschneiden
-
-  try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = payload.userId;                 // ab jetzt in der Route verfügbar
-    next();                                      // weiter zum Handler
-  } catch {
-    return res.status(401).json({ error: "Nicht eingeloggt" });
-  }
-}`,
+          "Steht :id im Pfad, musst du req.params.id im Handler auspacken und prüfen. Fehlt der Platzhalter im Pfad, ist req.params.id undefined — und dann bleibt jeder Request am Guard hängen.",
+        code: `app.patch("/tasks/:id", ...)     // Platzhalter im Pfad
+const id = req.params.id;        // auspacken
+if (!id) { ... }                 // prüfen`,
       },
       {
-        label: "Warum async bei jeder Route",
+        label: "Server-Grundgerüst",
         description:
-          "await funktioniert nur innerhalb einer async-Funktion. Da praktisch jede Route mit der Datenbank spricht, ist async der Normalfall. Vergisst du es, unterstreicht TypeScript das await rot.",
-        code: `router.get("/", requireAuth, async (req, res) => { ... });
-//                              ^^^^^ ohne das kein await`,
-      },
-      {
-        label: "Route registrieren",
-        description:
-          "Der Router allein tut nichts — er muss in der App eingehängt werden. Das Präfix steht dort, nicht in der Route selbst. Deshalb schreibst du in der Route nur '/' und '/:id'.",
-        code: `// server.ts
-                    app.use(express.json());              // JSON-Body überhaupt lesen können
-                    app.use("/tasks", taskRouter);        // Präfix für alle Routen im Router
-                    app.use("/categories", categoryRouter);`,
-        code: `router.patch("/:id", ...)              // Platzhalter im Pfad
-                    const id = Number(req.params.id);      // auspacken
-                    if (Number.isNaN(id)) { ... }          // prüfen`,
-      },
-      {
-        label: "findFirst statt findUnique bei mehreren Filtern",
-        description:
-          "Willst du Existenz und Ownership in einer Abfrage prüfen, geht das nicht mit findUnique — das erlaubt nur eindeutige Felder. Sobald du nach mehr als dem eindeutigen Feld filterst, ist findFirst richtig.",
-        code: `// findUnique + Prüfung im Code
-const note = await prisma.note.findUnique({ where: { id } });
-if (!note || note.userId !== userId) { ... }
+          "Ohne express.json() bleibt req.body leer. Ohne cors() blockiert der Browser Anfragen von deinem Frontend, weil es auf einem anderen Port läuft. app.listen() startet den Server und steht ganz unten.",
+        code: `import express from "express";
+import cors from "cors";
+import { prisma } from "./db.js";
 
-// oder alles in einer Abfrage
-const note = await prisma.note.findFirst({ where: { id, userId } });
-if (!note) { ... }`,
+const app = express();
+
+app.use(express.json());   // JSON-Body lesen können
+app.use(cors());           // Frontend darf zugreifen
+
+app.get("/", (req, res) => {
+  res.send("Server läuft");
+});
+
+// ... deine Routen ...
+
+app.listen(3000);`,
       },
     ],
   },
 
-  // =====================================================================
+  // ===================================================================
   {
-    id: "2",
-    title: "REST-Methoden",
-    layout: "tabelle",
-    entries: [
-      {
-        label: "GET",
-        description: "Daten holen, nichts verändern. Antwortet mit 200.",
-        example: "Alle Tasks anzeigen",
-      },
-      {
-        label: "POST",
-        description: "Etwas Neues erstellen. Antwortet mit 201 Created.",
-        example: "Neue Task anlegen",
-      },
-      {
-        label: "PUT",
-        description:
-          "Etwas Bestehendes komplett ersetzen. Alle Felder werden mitgeschickt.",
-        example: "Task bearbeiten",
-      },
-      {
-        label: "PATCH",
-        description:
-          "Etwas Bestehendes teilweise ändern. Nur die Felder, die sich ändern.",
-        example: "Nur done umschalten",
-      },
-      {
-        label: "DELETE",
-        description: "Etwas löschen. Antwortet mit 204 (kein Body).",
-        example: "Task löschen",
-      },
-    ],
-  },
-
-  // =====================================================================
-  {
-    id: "3",
-    title: "Statuscodes",
-    layout: "tabelle",
-    entries: [
-      {
-        label: "200",
-        description: "OK — hat geklappt, Daten kommen mit",
-        example: "GET, PATCH, PUT",
-      },
-      {
-        label: "201",
-        description: "Created — hat geklappt UND etwas Neues wurde angelegt",
-        example: "POST",
-      },
-      {
-        label: "204",
-        description: "No Content — hat geklappt, es gibt nichts zurückzugeben",
-        example: "DELETE",
-      },
-      {
-        label: "400",
-        description: "Bad Request — die Eingabe ist falsch oder unvollständig",
-        example: "Titel fehlt, ID ist keine Zahl",
-      },
-      {
-        label: "401",
-        description: "Unauthorized — nicht eingeloggt oder Token ungültig",
-        example: "Kein Token im Header",
-      },
-      {
-        label: "403",
-        description: "Forbidden — eingeloggt, aber keine Berechtigung",
-        example: "Bei fremden Daten lieber 404 nehmen",
-      },
-      {
-        label: "404",
-        description: "Not Found — gibt es nicht (oder nicht für dich)",
-        example: "Fremde oder gelöschte Task",
-      },
-      {
-        label: "409",
-        description: "Conflict — kollidiert mit dem Bestand",
-        example: "E-Mail schon registriert",
-      },
-      {
-        label: "500",
-        description: "Internal Server Error — bei uns ist was kaputt",
-        example: "DB weg, unerwarteter Fehler",
-      },
-    ],
-  },
-
-  {
-    id: "4",
+    id: "guards",
     title: "Guard Clauses",
     layout: "liste",
     entries: [
       {
         label: "Was es ist",
         description:
-          "Eine Prüfung ganz am Anfang, die bei ungültigem Zustand sofort aussteigt — bevor irgendwas passiert. Türsteher: Wer die Bedingungen nicht erfüllt, kommt gar nicht erst rein. Weiter geht es nur, wenn die Prüfung DURCHGEHT.",
+          "Ein Türsteher am Anfang der Funktion. Passt etwas nicht, ist sofort Schluss — der Rest läuft gar nicht erst. Weiter geht es NUR, wenn die Prüfung durchgeht.",
         code: `if (!userId) {
-                return res.status(401).json({ error: "Nicht eingeloggt" });
-                }
-                //  ^        ^                  ^
-                //  |        |                  Meldung an den Client
-                //  |        raus hier — Rest der Funktion wird übersprungen
-                //  "wenn NICHT vorhanden"`,
+  return res.status(401).json({ error: "Nicht eingeloggt" });
+}
+//  ^ "wenn NICHT vorhanden"
+//         ^ raus hier, Rest wird übersprungen`,
       },
       {
-        label: "Warum im Backend zwingend",
+        label: "Warum im Backend Pflicht",
         description:
-          "Alles was von außen kommt — URL, Body, Token — ist nicht vertrauenswürdig. Dein Frontend ist optional: Jeder kann mit Postman oder curl direkt DELETE /tasks/5 an deinen Server schicken, dein React kommt dabei nie vor. Alle Prüfungen, die nur im Formular stehen, sind damit umgangen. Frontend-Validierung ist Komfort für den Nutzer, Backend-Validierung ist Sicherheit.",
+          "Dein Frontend ist optional. Jeder kann mit Postman direkt DELETE /tasks/5 an deinen Server schicken — dein React kommt dabei nie vor. Alles, was nur im Formular geprüft wird, ist damit umgangen. Frontend-Prüfung = Komfort. Backend-Prüfung = Sicherheit.",
       },
       {
-        label: "Der zweite Grund: flacher Code",
+        label: "return NIEMALS vergessen",
         description:
-          "Ohne Guard Clauses landest du in einer if/else-Pyramide, in der die eigentliche Arbeit ganz innen versteckt ist. Der Trick ist immer derselbe: Bedingung umdrehen mit ! und früh raus. Ergebnis: alle Sonderfälle oben abgehandelt, der Normalfall unten und unverschachtelt.",
-        code: `// VORHER — Pyramide
-                if (userId) {
-                if (id) {
-                    if (task) {
-                    // die eigentliche Arbeit, drei Ebenen tief
-                    } else { ... }
-                } else { ... }
-                } else { ... }
-
-                // NACHHER — Guard Clauses
-                if (!userId) return res.status(401).json({ error: "..." });
-                if (!id)     return res.status(400).json({ error: "..." });
-                if (!task)   return res.status(404).json({ error: "..." });
-
-                // die eigentliche Arbeit — ganz links, gut lesbar`,
-      },
-      {
-        label: "return niemals vergessen",
-        description:
-          "Das ist die gefährlichste Stelle. Ohne return geht die Fehlerantwort zwar raus, aber die Funktion läuft trotzdem weiter: Sie löscht den Task, den sie eigentlich ablehnen wollte, und schickt danach eine ZWEITE Antwort. Express wirft dann 'Cannot set headers after they are sent'. Die Prüfung sieht im Code aus, als würde sie schützen — tut es aber nicht.",
+          "Der gefährlichste Fehler. Ohne return geht die Fehlermeldung zwar raus, aber die Funktion läuft weiter, macht die Aktion trotzdem und schickt eine zweite Antwort. Express wirft dann 'Cannot set headers after they are sent'. Die Prüfung sieht aus, als würde sie schützen — tut es aber nicht.",
         code: `// FALSCH
-                if (!userId) {
-                res.status(401).json({ error: "Nicht eingeloggt" });
-                }
-                await prisma.task.delete({ where: { id } });   // läuft trotzdem!
+if (!userId) {
+  res.status(401).json({ error: "..." });
+}
+await prisma.task.delete({ where: { id } });   // läuft trotzdem!
 
-                // RICHTIG
-                if (!userId) {
-                return res.status(401).json({ error: "Nicht eingeloggt" });
-                }`,
+// RICHTIG
+if (!userId) {
+  return res.status(401).json({ error: "..." });
+}`,
       },
       {
-        label: "In einer normalen Funktion",
+        label: "Reihenfolge: billig vor teuer",
         description:
-          "Ohne Express gibt es kein res. Dort brichst du mit throw ab. Der Fehler fliegt dann nach oben zum nächsten catch.",
-        code: `function begruesse(name: string | undefined) {
-                if (!name) {
-                    throw new Error("Ungültiger Name");
-                }
-
-                return "Hallo " + name;   // hier ist name garantiert ein string
-                }`,
+          "1) Eingeloggt? → 401. 2) Eingabe gültig? → 400. 3) Existiert es? → 404. 4) Gehört es mir? → 404. 5) Erst dann die Aktion. Die ersten beiden brauchen keine Datenbank. Wenn die ID sowieso Müll ist, musst du die DB gar nicht erst fragen.",
       },
       {
-        label: "Type Narrowing als Nebeneffekt",
+        label: "Flacher Code statt Pyramide",
         description:
-          "Nach der Guard Clause weiß TypeScript, dass der Wert nicht mehr undefined oder null sein kann — die Funktion käme sonst gar nicht bis dahin. Deshalb darfst du danach ohne ? damit arbeiten. Fahr mit der Maus über die Variable, dann siehst du den engeren Typ. Dasselbe Prinzip wie bei && im JSX.",
-        code: `const task = await prisma.task.findUnique({ where: { id } });
-                // task ist hier:  Task | null
+          "Ohne Guards versteckt sich die eigentliche Arbeit drei Ebenen tief. Der Trick ist immer derselbe: Bedingung umdrehen mit ! und früh raus.",
+        code: `// VORHER
+if (userId) {
+  if (id) {
+    if (task) {
+      // die Arbeit, ganz tief drin
+    } else { ... }
+  } else { ... }
+} else { ... }
 
-                if (!task) {
-                return res.status(404).json({ error: "Nicht gefunden" });
-                }
+// NACHHER
+if (!userId) return res.status(401).json({ error: "..." });
+if (!id)     return res.status(400).json({ error: "..." });
+if (!task)   return res.status(404).json({ error: "..." });
 
-                // task ist ab hier:  Task     — kein ?. mehr nötig
-                console.log(task.title);`,
+// die Arbeit — ganz links, gut lesbar`,
       },
       {
         label: "404 statt 403 bei fremden Daten",
         description:
-          "403 würde bedeuten 'existiert, gehört dir aber nicht' — damit verrätst du, dass die ID echt ist. Ein Angreifer könnte IDs durchprobieren und herausfinden, was existiert. 404 sagt schlicht 'gibt es nicht für dich'. Gleiches Prinzip wie die generische Meldung beim Login: nach außen so wenig verraten wie möglich.",
-        code: `// Existenz und Ownership in EINER Prüfung — beides ergibt 404
-                if (!task || task.userId !== userId) {
-                return res.status(404).json({ error: "Task nicht gefunden" });
-                }`,
+          "403 würde heißen 'existiert, gehört dir aber nicht' — damit verrätst du, dass die ID echt ist. Jemand könnte IDs durchprobieren. 404 sagt einfach 'gibt es nicht für dich'.",
+        code: `// Existenz und Ownership in EINER Prüfung
+if (!task || task.userId !== userId) {
+  return res.status(404).json({ error: "Task nicht gefunden" });
+}`,
       },
       {
-        label: "!id vs Number.isNaN(id) — Fallstrick",
+        label: "Type Narrowing — der Nebeneffekt",
         description:
-          "Number('abc') ergibt NaN, und !NaN ist true — das fängt der einfache Check. ABER: Number('0') ergibt 0, und !0 ist ebenfalls true. Der Guard würde die ID 0 ablehnen, obwohl sie gültig sein könnte. Bei Prisma-Autoincrement fängt die Zählung bei 1 an, also folgenlos — sauberer ist trotzdem der explizite Check. Derselbe Fallstrick wie || vs ??.",
-        code: `if (!id) { ... }                 // lehnt auch 0 ab
-                if (Number.isNaN(id)) { ... }    // prüft genau das, was gemeint ist`,
+          "Nach der Guard Clause weiß TypeScript, dass der Wert nicht mehr null sein kann. Die Funktion käme ja sonst gar nicht bis dahin. Deshalb darfst du danach ohne ? damit arbeiten.",
+        code: `const task = await prisma.task.findUnique({ where: { id } });
+// task ist hier:  Task | null
+
+if (!task) {
+  return res.status(404).json({ error: "Nicht gefunden" });
+}
+
+// task ist ab hier:  Task   — kein ?. nötig
+console.log(task.title);`,
+      },
+      {
+        label: "In einer normalen Funktion: throw",
+        description:
+          "Ohne Express gibt es kein res. Dort brichst du mit throw ab. Der Fehler fliegt dann nach oben zum nächsten catch.",
+        code: `function begruesse(name: string | undefined) {
+  if (!name) {
+    throw new Error("Ungültiger Name");
+  }
+  return "Hallo " + name;
+}`,
+      },
+      {
+        label: "Fallstrick: ! bei Zahlen",
+        description:
+          "! behandelt 0 und leeren Text wie 'nicht vorhanden'. Bei Zahlen-IDs deshalb lieber explizit prüfen. Derselbe Fallstrick wie || gegen ??.",
+        code: `if (!id) { ... }                 // lehnt auch die 0 ab
+if (Number.isNaN(id)) { ... }    // prüft genau das Gemeinte`,
       },
     ],
   },
 
-  // =====================================================================
+  // ===================================================================
   {
-    id: "5",
+    id: "trycatch",
     title: "try/catch & res",
     layout: "liste",
     entries: [
       {
         label: "Unterschied zu if/else",
         description:
-          "if/else prüft eine Bedingung, die DU formuliert hast — du weißt vorher, wonach du suchst. try/catch fängt Fehler ab, die du NICHT vorhersehen kannst. Niemand schreibt if (datenbankIstOffline). Daraus folgt die Aufteilung: Guard Clause = erwartete Fehler. try/catch = unerwartete Fehler.",
-      },
-      {
-        label: "Warum es das gibt",
-        description:
-          "Ein unbehandelter Fehler in Node bricht die Ausführung ab. Ohne catch bekommt der Client gar keine Antwort und hängt bis zum Timeout — im schlimmsten Fall stirbt der ganze Server, nicht nur dieser eine Request. Mit catch lebt der Server weiter und schickt eine ordentliche Fehlermeldung.",
+          "if/else prüft etwas, das DU dir überlegt hast — du weißt vorher, wonach du suchst. try/catch fängt Fehler ab, die du nicht vorhersehen kannst. Niemand schreibt if (datenbankIstOffline). Kurz: Guard Clause = erwartete Fehler. try/catch = unerwartete.",
       },
       {
         label: "Der Aufbau",
         description:
-          "catch läuft NICHT immer. Geht im try alles glatt, wird der catch-Block komplett übersprungen — anders als bei if/else, wo immer genau ein Zweig läuft. Und was catch macht, wenn es zuschlägt: Es überspringt den REST des try-Blocks. Beendet wird die Funktion erst durch das return im catch.",
+          "catch läuft NICHT immer — geht im try alles gut, wird es komplett übersprungen. Schlägt es zu, wird der REST des try übersprungen. Beendet wird die Funktion erst durch das return im catch.",
         code: `try {
-                const task = await prisma.task.findUnique({ where: { id } });
-                await prisma.task.delete({ where: { id } });   // wird übersprungen,
-                return res.status(204).send();                 // wenn oben was wirft
-                } catch (error) {
-                console.error(error);                          // Details für dich
-                return res.status(500).json({ error: "Serverfehler" });
-                }`,
+  const task = await prisma.task.findUnique({ where: { id } });
+  await prisma.task.delete({ where: { id } });   // wird übersprungen,
+  return res.status(204).send();                 // wenn oben was schiefgeht
+} catch (error) {
+  console.error(error);
+  return res.status(500).json({ error: "Serverfehler" });
+}`,
       },
       {
-        label: "throw und catch sind ein Paar",
+        label: "Warum es das braucht",
         description:
-          "throw wirft einen Fehler, catch fängt ihn — und das funktioniert über Funktionsgrenzen hinweg. Prisma wirft intern einen Fehler, dein catch fängt ihn, obwohl du den Code von Prisma nie gesehen hast.",
+          "Ein unbehandelter Fehler bricht die Ausführung ab. Ohne catch bekommt der Client gar keine Antwort und hängt — im schlimmsten Fall stirbt der ganze Server, nicht nur dieser eine Request.",
       },
       {
         label: "await braucht try",
         description:
-          "await wartet auf ein Ergebnis, das später kommt. Geht das Warten schief, wirft await den Fehler. Deshalb steht im Backend fast jeder await-Aufruf in einem try-Block. Und deshalb beginnt das try genau da, wo die Datenbank ins Spiel kommt — die Guards davor brauchen es nicht.",
+          "await wartet auf etwas, das später kommt. Geht das schief, wirft await den Fehler. Deshalb steht fast jeder await-Aufruf in einem try — und deshalb beginnt das try genau da, wo die Datenbank ins Spiel kommt. Die Guards davor brauchen es nicht.",
       },
       {
         label: "return vs res — der wichtigste Unterschied",
         description:
-          "return beendet die Funktion. res beantwortet den Request. Eine Express-Route gibt nichts an einen Aufrufer zurück, denn es gibt keinen — der Client sitzt am anderen Ende einer HTTP-Verbindung, nicht in deinem Code. Mit return task passiert nichts: Express ignoriert den Wert, der Request hängt. Bei return res.json(task) macht das res die Arbeit, das return sorgt nur dafür, dass danach nichts mehr läuft.",
-        code: `return task;                    // ❌ Client bekommt nie eine Antwort
-                return res.json(task);          // ✅
+          "return beendet die Funktion. res beantwortet den Request. Eine Route gibt nichts an einen Aufrufer zurück, denn es gibt keinen — der Client sitzt am anderen Ende einer Internetverbindung. Mit return task passiert nichts, der Request hängt.",
+        code: `return task;             // ❌ Client bekommt nie eine Antwort
+return res.json(task);   // ✅
 
-                // Die res-Methoden:
-                res.json(daten)                 // Daten als JSON
-                res.status(201).json(daten)     // mit Statuscode
-                res.status(204).send()          // ohne Body
-                // res.log() gibt es NICHT — Loggen ist console.error`,
+// Die res-Methoden:
+res.json(daten)               // Daten als JSON
+res.status(201).json(daten)   // mit Statuscode
+res.status(204).send()        // ohne Inhalt
+res.send("Text")              // reiner Text
+// res.log() gibt es NICHT — Loggen ist console.error`,
       },
       {
         label: "Loggen und Antworten sind getrennt",
         description:
-          "console.error(error) schreibt ins Terminal, wo dein Server läuft — mit allen Details, für dich. Der Client bekommt eine generische Meldung. Echte Fehlertexte enthalten oft Interna: Tabellennamen, Spaltennamen, Dateipfade, manchmal Teile der Datenbank-URL. Das gehört nicht nach außen.",
+          "console.error schreibt ins Terminal, wo dein Server läuft — mit allen Details, für dich. Der Client bekommt eine allgemeine Meldung. Echte Fehlertexte verraten Tabellennamen, Dateipfade, manchmal Teile der Datenbank-Adresse.",
         code: `// FALSCH
-                return res.status(500).json({ error: error.message });
+return res.status(500).json({ error: error.message });
 
-                // RICHTIG
-                console.error(error);
-                return res.status(500).json({ error: "Serverfehler" });`,
+// RICHTIG
+console.error(error);
+return res.status(500).json({ error: "Serverfehler" });`,
+      },
+      {
+        label: "throw und catch sind ein Paar",
+        description:
+          "throw wirft, catch fängt — auch über Dateigrenzen hinweg. Prisma wirft intern einen Fehler, dein catch fängt ihn, obwohl du den Prisma-Code nie gesehen hast.",
       },
       {
         label: "catch (error) ist unknown",
         description:
-          "TypeScript gibt error den Typ unknown, weil theoretisch alles geworfen werden kann — nicht nur ein Error-Objekt. Willst du an die Nachricht ran, musst du erst prüfen. Für den Anfang reicht console.error(error).",
+          "TypeScript weiß nicht, was geworfen wurde — theoretisch kann alles geworfen werden. Willst du an die Nachricht ran, musst du erst prüfen. Für den Anfang reicht console.error(error).",
         code: `catch (error) {
-                const nachricht = error instanceof Error ? error.message : "Unbekannt";
-                console.error(nachricht);
-                return res.status(500).json({ error: "Serverfehler" });
-                }`,
+  const text = error instanceof Error ? error.message : "Unbekannt";
+  console.error(text);
+  return res.status(500).json({ error: "Serverfehler" });
+}`,
       },
     ],
   },
 
-  // =====================================================================
+  // ===================================================================
   {
-    id: "6",
+    id: "prisma",
     title: "Prisma",
     layout: "liste",
     entries: [
       {
         label: "Was ein ORM ist",
         description:
-          "Deine Datenbank versteht nur SQL, dein Code ist TypeScript. Prisma ist der Übersetzer dazwischen: Du schreibst Objekte, Prisma baut daraus SQL, schickt es an die DB und gibt dir fertige JavaScript-Objekte zurück.",
+          "Die Datenbank versteht nur SQL, dein Code ist TypeScript. Prisma übersetzt: Du schreibst Objekte, Prisma baut daraus SQL und gibt dir fertige JavaScript-Objekte zurück.",
         code: `// SQL
 SELECT * FROM "Task" WHERE "userId" = 3;
 
@@ -425,179 +420,1160 @@ SELECT * FROM "Task" WHERE "userId" = 3;
 await prisma.task.findMany({ where: { userId: 3 } });`,
       },
       {
-        label: "Typsicherheit und prisma generate",
+        label: "where vs data — die Grundregel",
         description:
-          "Prisma liest dein schema.prisma und generiert daraus TypeScript-Typen. Deshalb kennt VS Code deine Felder und schlägt sie vor, und ein Tippfehler im Spaltennamen fällt beim Schreiben auf statt erst zur Laufzeit. Genau deshalb musst du nach jeder Schema-Änderung generate laufen lassen — erst dann kennt TypeScript die neuen Felder.",
-        code: `npx prisma migrate dev --name kategorie-hinzugefuegt
-npx prisma generate
-npx prisma studio     // DB im Browser ansehen`,
-      },
-      {
-        label: "Warum await",
-        description:
-          "Die Datenbank liegt woanders, die Antwort dauert. Node wartet nicht untätig, sondern arbeitet weiter — der Prisma-Aufruf liefert deshalb sofort ein Promise zurück, einen Platzhalter für 'Ergebnis kommt noch'. await sagt: halt hier an, bis es da ist, dann pack es aus. Ohne await hast du nicht 'keine Daten', sondern ein Promise — und promise.title ist undefined, ohne dass etwas meckert. Genau deshalb ist ein vergessenes await so tückisch.",
-        code: `const tasks = prisma.task.findMany();          // ❌ ein Promise
-const tasks = await prisma.task.findMany();    // ✅ das Array
-
-// await geht nur in async-Funktionen:
-router.get("/", requireAuth, async (req, res) => { ... });`,
-      },
-      {
-        label: "where vs data",
-        description:
-          "where = suchen. data = schreiben. create braucht nur data (beim Anlegen gibt es noch nichts zu suchen), delete nur where, update beides. Wenn du unsicher bist, welche Methode: Frag dich, ob du etwas Bestehendes brauchst. Wenn nein, ist es create.",
+          "where = suchen. data = schreiben. create braucht nur data (beim Anlegen gibt es noch nichts zu suchen), delete nur where, update beides.",
         code: `await prisma.task.update({
-  where: { id: 5 },        // WELCHER Datensatz
+  where: { id },           // WELCHER Datensatz
   data: { done: true },    // WAS reinschreiben
 });`,
       },
       {
-        label: "Lesen: findMany",
+        label: "findMany — mehrere holen",
         description:
-          "Holt mehrere Datensätze. Gibt ein Array zurück — bei keinem Treffer ein leeres, nie null und nie ein Fehler. orderBy sortiert, take begrenzt die Anzahl.",
+          "Gibt ein Array zurück. Bei keinem Treffer ein leeres — nie null, nie ein Fehler. orderBy sortiert, take begrenzt die Anzahl.",
         code: `const tasks = await prisma.task.findMany({
   where: { userId },
-  orderBy: { createdAt: "desc" },
-  take: 20,
-});
-
-return res.json(tasks);`,
+  orderBy: { createdAt: "desc" },   // neueste zuerst
+  take: 20,                         // maximal 20
+});`,
       },
       {
-        label: "Lesen: findUnique vs findFirst",
+        label: "findUnique / findFirst — einen holen",
         description:
-          "findUnique darf nur nach Feldern suchen, die in der DB als eindeutig markiert sind — id, oder email mit @unique. Dafür ist es schneller, weil die DB einen Index nutzen kann. findFirst kann nach allem suchen und nimmt bei mehreren Treffern den ersten. Beide geben null zurück, wenn nichts passt.",
-        code: `// nur über eindeutige Felder
-const task = await prisma.task.findUnique({ where: { id } });
+          "findUnique sucht nur über eindeutige Felder (id, oder email mit @unique) — dafür schneller. findFirst darf nach allem suchen und nimmt den ersten Treffer. Beide geben null zurück, wenn nichts passt.",
+        code: `const task = await prisma.task.findUnique({ where: { id } });
 const user = await prisma.user.findUnique({ where: { email } });
 
-// beliebige Bedingung
+// beliebige Bedingung:
 const offen = await prisma.task.findFirst({
   where: { userId, done: false },
 });`,
       },
       {
-        label: "Anlegen: create",
+        label: "create — anlegen",
         description:
-          "Braucht nur data. Beim Anlegen gibt es noch keine ID — die vergibt die Datenbank. Gibt den neu angelegten Datensatz inklusive ID zurück, deshalb kannst du ihn direkt zurückschicken. Antwort ist 201.",
+          "Nur data. Die ID vergibt die Datenbank selbst. Gibt den neuen Datensatz inklusive ID zurück, den kannst du direkt zurückschicken.",
         code: `const task = await prisma.task.create({
-  data: { title, userId },      // Kurzschreibweise für title: title
+  data: { title, userId },
 });
-
 return res.status(201).json(task);`,
       },
       {
-        label: "Ändern: update",
+        label: "update — ändern",
         description:
-          "Braucht where und data. Gibt den geänderten Datensatz zurück. Wichtig: Wirft einen Fehler, wenn nichts gefunden wird — deshalb vorher findUnique.",
-        code: `const aktualisiert = await prisma.task.update({
+          "where und data. Gibt den geänderten Datensatz zurück. Wirft einen Fehler, wenn nichts gefunden wird — deshalb vorher findUnique.",
+        code: `const updated = await prisma.task.update({
   where: { id },
   data: { done: !task.done },   // umschalten
-});
-
-return res.json(aktualisiert);`,
+});`,
       },
       {
-        label: "Löschen: delete",
+        label: "delete — löschen",
         description:
-          "Braucht nur where. Wirft ebenfalls, wenn nichts gefunden wird. Antwort ist 204 ohne Body — es gibt nichts mehr zurückzugeben.",
+          "Nur where. Wirft ebenfalls, wenn nichts gefunden wird. Antwort ist 204 ohne Inhalt.",
         code: `await prisma.task.delete({ where: { id } });
-
 return res.status(204).send();`,
       },
       {
-        label: "WICHTIG: Was passiert, wenn nichts gefunden wird",
+        label: "WICHTIG: was passiert bei 'nicht gefunden'",
         description:
-          "Der Fallstrick, der alles mit den Guard Clauses verbindet. findMany gibt [], findUnique und findFirst geben null — beide werfen NICHT. update und delete dagegen werfen einen Fehler. Deshalb funktioniert if (!task) überhaupt, und deshalb machst du IMMER erst findUnique und dann update/delete.",
-        code: `findMany     → []      kein Fehler
-findUnique   → null    kein Fehler
-findFirst    → null    kein Fehler
-update       → wirft
-delete       → wirft`,
+          "Der Punkt, der alles mit den Guard Clauses verbindet. Lesen wirft nie, Schreiben schon. Deshalb funktioniert if (!task) überhaupt — und deshalb machst du IMMER erst findUnique, dann update/delete.",
+        code: `findMany     →  []      kein Fehler
+findUnique   →  null    kein Fehler
+findFirst    →  null    kein Fehler
+update       →  wirft
+delete       →  wirft`,
       },
       {
-        label: "Warum erst findUnique, dann delete",
+        label: "Warum erst suchen, dann löschen",
         description:
-          "Zwei Gründe. Erstens Ownership: Ohne findUnique weißt du nicht, wem der Datensatz gehört — jeder eingeloggte User könnte DELETE /tasks/5 schicken und fremde Tasks löschen. Zweitens der Statuscode: Löschst du direkt und die ID existiert nicht, wirft Prisma, dein catch fängt es und antwortet 500. Aber 'gibt es nicht' ist kein Serverfehler, das ist ein 404. Deshalb hast du in diesen Routen zwei DB-Aufrufe statt einem.",
-        code: `const task = await prisma.task.findUnique({ where: { id } });
-
-if (!task || task.userId !== userId) {
-  return res.status(404).json({ error: "Task nicht gefunden" });
-}
-
-await prisma.task.delete({ where: { id } });`,
+          "Zwei Gründe. Erstens Ownership: Ohne findUnique weißt du nicht, wem der Datensatz gehört — jeder Eingeloggte könnte fremde Tasks löschen. Zweitens der Statuscode: Direkt löschen bei nicht existierender ID gibt einen 500, obwohl es ein 404 sein müsste.",
       },
       {
         label: "Leeres Array ist kein 404",
         description:
-          "Ein User ohne Tasks ist völlig normal, kein Fehlerfall. Du gibst [] zurück, das Frontend zeigt seinen Empty State. 404 ist nur richtig, wenn ein konkreter, angeforderter Datensatz nicht existiert.",
+          "Ein User ohne Tasks ist normal, kein Fehler. Du gibst [] zurück, das Frontend zeigt seinen Empty State. 404 ist nur richtig, wenn ein konkret angefragter Datensatz fehlt.",
       },
       {
         label: "select und include",
         description:
-          "select holt nur bestimmte Felder statt aller — nützlich, um Passwort-Hashes nie mitzuschicken. include lädt verknüpfte Daten mit; ohne das bekommst du nur die categoryId, nicht die Kategorie selbst. Das ist der Baustein, der deine Relationen nutzbar macht.",
+          "select holt nur bestimmte Felder — nützlich, um Passwörter nie mitzuschicken. include lädt verknüpfte Daten mit; ohne das bekommst du nur die categoryId, nicht die Kategorie selbst.",
         code: `// nur bestimmte Felder
 const user = await prisma.user.findUnique({
   where: { id: userId },
-  select: { id: true, email: true },     // ohne password!
+  select: { id: true, email: true },   // ohne password!
 });
 
 // verknüpfte Daten mitladen
 const tasks = await prisma.task.findMany({
   where: { userId },
-  include: { category: true },           // task.category.name nutzbar
+  include: { category: true },         // task.category.name nutzbar
+});`,
+      },
+      {
+        label: "Befehle im Terminal",
+        description:
+          "Nach jeder Schema-Änderung: migrate schreibt die Änderung in die Datenbank, generate aktualisiert die TypeScript-Typen. Ohne generate kennt VS Code die neuen Felder nicht.",
+        code: `npx prisma migrate dev --name kategorie-dazu
+npx prisma generate
+npx prisma studio          # Datenbank im Browser ansehen`,
+      },
+      {
+        label: "Schema-Aufbau",
+        description:
+          "So sieht ein Modell mit Beziehung aus. @id markiert den Schlüssel, @unique verbietet Doppelte, @default setzt einen Startwert. Die Beziehung braucht immer beides: das Feld mit der ID und das Feld mit dem Objekt.",
+        code: `model User {
+  id       String @id @default(cuid())
+  email    String @unique
+  password String
+  tasks    Task[]              // ein User hat viele Tasks
+}
+
+model Task {
+  id     String  @id @default(cuid())
+  title  String
+  done   Boolean @default(false)
+  userId String                          // die ID
+  user   User    @relation(fields: [userId], references: [id])
+}`,
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "zod",
+    title: "Zod (Validierung)",
+    layout: "liste",
+    entries: [
+      {
+        label: "Wofür Zod da ist",
+        description:
+          "req.body ist für TypeScript ein 'any' — es könnte alles sein: das erwartete Objekt, ein leeres {}, ein Text, null. TypeScript kann das nicht prüfen, weil die Daten erst beim Laufen ankommen. Zod prüft genau das: Passen die Daten zur erwarteten Form?",
+      },
+      {
+        label: "Schema schreiben",
+        description:
+          "z.object() beschreibt die Form. Die Regeln hängst du mit einem Punkt an. Mit .optional() wird ein Feld freiwillig, mit .default() bekommt es einen Startwert.",
+        code: `import z from "zod";
+
+const priorities = z.enum(["low", "medium", "high"]);
+
+const taskSchema = z.object({
+  title: z.string().min(1, "Titel darf nicht leer sein"),
+  text: z.string(),
+  date: z.string().optional(),
+  priority: priorities,
+});
+
+const userSchema = z.object({
+  email: z.email(),
+  password: z.string().min(8),
+});
+
+export { taskSchema, userSchema, priorities };`,
+      },
+      {
+        label: "safeParse — prüfen in der Route",
+        description:
+          "safeParse wirft NICHT, sondern gibt ein Ergebnis mit success zurück. Deshalb passt es perfekt zur Guard-Clause-Logik. Passt es: result.data. Passt es nicht: result.error.",
+        code: `const result = taskSchema.safeParse(req.body);
+
+if (!result.success) {
+  console.error(result.error);      // zeigt dir, WELCHES Feld nicht passt
+  return res.status(400).json({ error: "Ungültige Daten" });
+}
+
+// ab hier: result.data hat garantiert die richtige Form
+const { title, text } = result.data;`,
+      },
+      {
+        label: "Danach IMMER result.data benutzen",
+        description:
+          "Der häufigste Fehler: Zod prüfen und danach trotzdem req.body benutzen. Dann bringt die Prüfung nichts. result.data ist die geprüfte, typisierte Version.",
+        code: `const { email } = req.body;        // ❌ ungeprüft, any
+const { email } = result.data;     // ✅ garantiert korrekt`,
+      },
+      {
+        label: "...result.data spreizen",
+        description:
+          "Der Punkt-Punkt-Punkt kippt alle Felder aus result.data ins data-Objekt. Danach kannst du eigene Felder ergänzen. ACHTUNG bei Passwörtern: die müssen gehasht rein, also dort NICHT spreizen, sondern einzeln setzen.",
+        code: `// gut bei Tasks
+data: { ...result.data, done: false, userId }
+
+// NICHT bei Passwörtern — sonst landet Klartext in der DB
+data: { email: result.data.email, password: hashedPassword }`,
+      },
+      {
+        label: "safeParse vs parse",
+        description:
+          "parse wirft einen Fehler und braucht ein try/catch. safeParse gibt nur ein Ergebnis zurück. In Routen nimmst du immer safeParse.",
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "auth",
+    title: "Auth (Login & Token)",
+    layout: "liste",
+    entries: [
+      {
+        label: "Wie das Ganze zusammenhängt",
+        description:
+          "1) Registrieren: Passwort wird gehasht in die DB gelegt. 2) Login: eingegebenes Passwort wird mit dem Hash verglichen; passt es, gibt es einen Token. 3) Der Token wird im Frontend gespeichert und bei jeder Anfrage mitgeschickt. 4) requireAuth prüft ihn und hängt die userId an den Request.",
+      },
+      {
+        label: "bcrypt — Passwort hashen",
+        description:
+          "Aus 'geheim123' wird eine unlesbare Zeichenkette. Das ist eine Einbahnstraße — zurückrechnen geht nicht. Beim Login vergleichst du deshalb nicht die Passwörter, sondern lässt bcrypt prüfen, ob das eingegebene zum Hash passt. Die 10 sind die Runden: höher = sicherer, aber langsamer.",
+        code: `// beim Registrieren
+const hashedPassword = await bcrypt.hash(password, 10);
+
+// beim Login
+const isValid = await bcrypt.compare(password, user.password);`,
+      },
+      {
+        label: "POST /register — komplett",
+        description:
+          "Achtung, hier ist die Prüfung UMGEDREHT: Sonst ist 'nicht gefunden' schlecht, hier ist 'gefunden' schlecht. Die E-Mail soll ja frei sein. Deshalb 409 Conflict — die Anfrage ist in Ordnung, kollidiert aber mit dem Bestand.",
+        code: `app.post("/register", async (req, res) => {
+  const result = userSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ error: "Ungültige Daten" });
+  }
+
+  const { email, password } = result.data;
+
+  try {
+    // UMGEDREHT: wenn gefunden, ist es ein Fehler
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(409).json({ error: "E-Mail bereits vergeben" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: { email, password: hashedPassword },
+    });
+
+    const { password: _, ...rest } = user;   // Passwort rausnehmen
+    return res.status(201).json(rest);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Serverfehler" });
+  }
+});`,
+      },
+      {
+        label: "POST /login — komplett",
+        description:
+          "Wichtig: Bei falscher E-Mail UND bei falschem Passwort dieselbe Meldung. Sonst könnte jemand herausfinden, welche E-Mails registriert sind, indem er die Meldungen vergleicht.",
+        code: `app.post("/login", async (req, res) => {
+  const result = userSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ error: "Ungültige Daten" });
+  }
+
+  const { email, password } = result.data;
+
+  try {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.status(401).json({ error: "E-Mail oder Passwort falsch" });
+    }
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: "E-Mail oder Passwort falsch" });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_SECRET!,
+      { expiresIn: "7d" },
+    );
+
+    const { password: _, ...rest } = user;
+    return res.json({ ...rest, token });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Serverfehler" });
+  }
+});`,
+      },
+      {
+        label: "requireAuth — die Middleware",
+        description:
+          "Middleware läuft VOR dem Handler. Sie liest den Token, prüft ihn und hängt die userId an den Request. Danach ruft sie next() auf — erst dadurch läuft deine Route weiter. Ohne next() hängt der Request. Ist der Token kaputt, antwortet sie selbst mit 401 und der Handler wird nie erreicht.",
+        code: `function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;   // "Bearer eyJhbGci..."
+
+  if (!authHeader) {
+    return res.status(401).json({ error: "Kein Token vorhanden" });
+  }
+
+  const token = authHeader.split(" ")[1];   // das "Bearer " abschneiden
+
+  if (!token) {
+    return res.status(401).json({ error: "Kein Token vorhanden" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      userId: string;
+    };
+    req.userId = decoded.userId;   // ab jetzt in der Route verfügbar
+    next();                        // weiter zum Handler
+  } catch (error) {
+    return res.status(401).json({ error: "Ungültiger Token" });
+  }
+}`,
+      },
+      {
+        label: "Passwort aus der Antwort entfernen",
+        description:
+          "Diese eine Zeile nimmt password heraus und packt alles andere in rest. Der Unterstrich heißt: 'brauche ich nicht'. Dann schickst du nur rest — der Hash verlässt den Server nie.",
+        code: `const { password: _, ...rest } = user;
+return res.json(rest);`,
+      },
+      {
+        label: "Token im Frontend",
+        description:
+          "Der Token kommt beim Login zurück und wird gespeichert, damit man beim Neuladen eingeloggt bleibt. Bei jeder geschützten Anfrage kommt er in den Authorization-Header.",
+        code: `// speichern
+localStorage.setItem("token", token);
+
+// mitschicken
+const response = await fetch("http://localhost:3000/tasks", {
+  headers: { Authorization: \`Bearer \${token}\` },
 });`,
       },
     ],
   },
 
-  // =====================================================================
+  // ===================================================================
   {
-    id: "7",
-    title: "TS Datenmodell",
+    id: "rest",
+    title: "REST & Statuscodes",
+    layout: "tabelle",
+    entries: [
+      {
+        label: "GET",
+        description: "Daten holen, nichts verändern → 200",
+        example: "Alle Tasks anzeigen",
+      },
+      {
+        label: "POST",
+        description: "Etwas Neues erstellen → 201",
+        example: "Neue Task anlegen",
+      },
+      {
+        label: "PUT",
+        description: "Komplett ersetzen, alle Felder mitschicken → 200",
+        example: "Task bearbeiten",
+      },
+      {
+        label: "PATCH",
+        description: "Nur einzelne Felder ändern → 200",
+        example: "done umschalten",
+      },
+      {
+        label: "DELETE",
+        description: "Löschen, keine Antwort nötig → 204",
+        example: "Task löschen",
+      },
+      {
+        label: "200 OK",
+        description: "Hat geklappt, Daten kommen mit",
+        example: "GET, PATCH, PUT",
+      },
+      {
+        label: "201 Created",
+        description: "Hat geklappt UND etwas Neues wurde angelegt",
+        example: "POST",
+      },
+      {
+        label: "204 No Content",
+        description: "Hat geklappt, es gibt nichts zurückzugeben",
+        example: "DELETE",
+      },
+      {
+        label: "400 Bad Request",
+        description: "Die Eingabe ist falsch oder unvollständig",
+        example: "Zod lehnt ab, ID fehlt",
+      },
+      {
+        label: "401 Unauthorized",
+        description: "Nicht eingeloggt oder Token ungültig",
+        example: "Kein Token, falsches Passwort",
+      },
+      {
+        label: "403 Forbidden",
+        description: "Eingeloggt, aber nicht erlaubt",
+        example: "Bei fremden Daten lieber 404",
+      },
+      {
+        label: "404 Not Found",
+        description: "Gibt es nicht — oder nicht für dich",
+        example: "Fremde Task",
+      },
+      {
+        label: "409 Conflict",
+        description: "Eingabe ok, kollidiert aber mit dem Bestand",
+        example: "E-Mail schon registriert",
+      },
+      {
+        label: "500 Server Error",
+        description: "Bei uns ist was kaputt",
+        example: "DB weg, unerwarteter Fehler",
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "usestate",
+    title: "useState",
     layout: "liste",
     entries: [
       {
-        label: "Erst Daten formen, dann anzeigen",
+        label: "Wofür State da ist",
         description:
-          "Die Form der Daten entscheidet, wie einfach die Anzeige wird. Liegen die Einträge im Thema, schreibst du thema.entries. Liegen sie außerhalb, musst du bei jedem Klick suchen. Deshalb immer in dieser Reihenfolge denken.",
+          "React zeichnet eine Komponente neu, indem es die Funktion komplett nochmal ausführt. Ein normales let wäre bei jedem Durchlauf wieder weg — und React würde gar nicht merken, dass sich was geändert hat. State löst beides: Der Wert überlebt, und die Änderung löst das Neuzeichnen aus.",
+        code: `const [wert, setWert] = useState("");
+//     ^ lesen  ^ ändern           ^ Startwert`,
+      },
+      {
+        label: "Typen angeben",
+        description:
+          "Bei einfachen Startwerten erkennt TypeScript den Typ selbst. Bei null oder leeren Arrays musst du ihn angeben, sonst weiß TypeScript nicht, was später reinkommt.",
+        code: `const [name, setName] = useState("");                  // string, klar
+const [zahl, setZahl] = useState(0);                   // number, klar
+const [tasks, setTasks] = useState<Task[]>([]);        // nötig!
+const [aktiv, setAktiv] = useState<Task | null>(null); // nötig!`,
+      },
+      {
+        label: "Niemals direkt zuweisen",
+        description:
+          "Nur die set-Funktion sagt React 'zeichne neu'. Eine direkte Zuweisung ändert vielleicht den Wert, aber der Bildschirm bleibt gleich.",
+        code: `wert = "neu";        // ❌ passiert nichts sichtbar
+setWert("neu");      // ✅`,
+      },
+      {
+        label: "Auf dem alten Wert aufbauen",
+        description:
+          "Wenn der neue Wert vom alten abhängt, gib der set-Funktion eine Funktion mit. Dann bekommst du den garantiert aktuellen Wert — wichtig, wenn mehrere Änderungen schnell hintereinander kommen.",
+        code: `setZahl((prev) => prev + 1);
+setTasks((prevTasks) => [...prevTasks, neueTask]);`,
+      },
+      {
+        label: "Arrays ändern — immer eine Kopie",
+        description:
+          "React erkennt Änderungen daran, dass es ein NEUES Array ist. push verändert das alte, deshalb merkt React nichts. Also immer eine neue Liste bauen.",
+        code: `// HINZUFÜGEN
+setTasks((prev) => [...prev, neueTask]);
+
+// LÖSCHEN
+setTasks((prev) => prev.filter((t) => t.id !== id));
+
+// EINEN ÄNDERN
+setTasks((prev) =>
+  prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+);
+
+// ❌ NIE:
+tasks.push(neueTask);`,
+      },
+      {
+        label: "Objekte ändern — auch eine Kopie",
+        description:
+          "Gleiches Prinzip: Die drei Punkte kopieren alle alten Felder, danach überschreibst du gezielt eins.",
+        code: `setUser((prev) => ({ ...prev, name: "Alex" }));
+//                    ^ alles Alte    ^ das Neue`,
+      },
+      {
+        label: "Startwert aus localStorage",
+        description:
+          "Gibst du useState eine Funktion mit, läuft sie nur EINMAL beim ersten Rendern statt bei jedem. Praktisch für Sachen, die etwas kosten.",
+        code: `const [token, setToken] = useState<string | null>(() => {
+  return localStorage.getItem("token");
+});`,
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "listen",
+    title: "Listen & Array-Methoden",
+    layout: "liste",
+    entries: [
+      {
+        label: ".map() — umwandeln",
+        description:
+          "Geht durch und baut eine NEUE Liste mit gleich vielen Einträgen. Objekt rein, JSX raus. Das ist die Methode, mit der du in React Listen anzeigst.",
+        code: `{tasks.map((task) => (
+  <li key={task.id}>{task.title}</li>
+))}
+
+// => ( )  gibt direkt zurück
+// => { }  braucht ein eigenes return!`,
+      },
+      {
+        label: ".filter() — aussortieren",
+        description:
+          "Behält nur die Einträge, bei denen die Bedingung wahr ist. Die Liste wird kürzer, die Einträge selbst bleiben gleich.",
+        code: `const offene = tasks.filter((task) => !task.done);
+const gefunden = tasks.filter((task) => task.title.includes(suche));
+
+// Löschen im State:
+setTasks((prev) => prev.filter((t) => t.id !== id));`,
+      },
+      {
+        label: ".find() — einen suchen",
+        description:
+          "Gibt den ERSTEN Treffer zurück, nicht eine Liste. Findet es nichts, kommt undefined — also danach prüfen.",
+        code: `const task = tasks.find((t) => t.id === id);
+if (!task) return;`,
+      },
+      {
+        label: ".some() und .every() — ja oder nein",
+        description:
+          "some fragt: gibt es mindestens einen? every fragt: trifft es auf alle zu? Beide geben true oder false zurück.",
+        code: `const gibtOffene = tasks.some((t) => !t.done);
+const allesFertig = tasks.every((t) => t.done);`,
+      },
+      {
+        label: ".includes() — ist etwas drin",
+        description:
+          "Funktioniert bei Listen und bei Text. Bei der Suche solltest du beides kleinschreiben, sonst findet 'Einkauf' nicht 'einkauf'.",
+        code: `const treffer = task.title
+  .toLowerCase()
+  .includes(suche.toLowerCase());`,
+      },
+      {
+        label: ".sort() — sortieren",
+        description:
+          "ACHTUNG: sort verändert das Original. In React deshalb vorher kopieren, sonst zeigt der Bildschirm nichts an.",
+        code: `const sortiert = [...tasks].sort((a, b) =>
+  a.title.localeCompare(b.title),
+);
+
+// Zahlen:
+const nachZahl = [...items].sort((a, b) => a.wert - b.wert);`,
+      },
+      {
+        label: ".reduce() — zu einem Wert zusammenrechnen",
+        description:
+          "Rechnet eine ganze Liste auf einen einzigen Wert herunter. Die 0 am Ende ist der Startwert.",
+        code: `const summe = zahlen.reduce((total, zahl) => total + zahl, 0);
+const anzahlOffen = tasks.reduce(
+  (n, t) => (t.done ? n : n + 1),
+  0,
+);`,
+      },
+      {
+        label: "key — warum nicht der Index",
+        description:
+          "React vergleicht alt und neu und braucht pro Eintrag ein Erkennungsmerkmal. Der Index ist die POSITION, keine Eigenschaft des Dings: Löschst du den ersten Eintrag, rutschen alle hoch und React verwechselt sie. Bei Buttons fällt das nicht auf, bei Eingabefeldern landen Werte in der falschen Zeile. Die id klebt am Objekt, der Index an der Position.",
+        code: `<li key={task.id}>     // ✅
+<li key={index}>       // ❌`,
+      },
+      {
+        label: "Ketten: filter + map zusammen",
+        description:
+          "Beide geben eine neue Liste zurück, also kannst du sie hintereinanderhängen. Erst aussortieren, dann anzeigen.",
+        code: `{tasks
+  .filter((t) => !t.done)
+  .map((t) => (
+    <li key={t.id}>{t.title}</li>
+  ))}`,
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "rendern",
+    title: "Bedingtes Rendern",
+    layout: "liste",
+    entries: [
+      {
+        label: "&& — zeigen oder nichts",
+        description:
+          "Ist links wahr, kommt rechts auf den Bildschirm. Ist es falsch, passiert nichts. Nur ein Ausgang.",
+        code: `{fehler && <p className="error">{fehler}</p>}
+{isLoading && <p>Lädt...</p>}`,
+      },
+      {
+        label: "? : — entweder oder",
+        description:
+          "Zwei Ausgänge: Ist die Bedingung wahr, kommt das erste, sonst das zweite. Genau ein if/else für JSX.",
+        code: `{token ? (
+  <TaskListe />
+) : (
+  <Login onLogin={setToken} />
+)}`,
+      },
+      {
+        label: "Fallstrick: Zahlen bei &&",
+        description:
+          "Ist links eine 0, zeigt React die 0 an statt gar nichts. Deshalb bei Zahlen immer eine echte Bedingung schreiben.",
+        code: `{tasks.length && <p>Es gibt Tasks</p>}       // ❌ zeigt "0"
+{tasks.length > 0 && <p>Es gibt Tasks</p>}   // ✅`,
+      },
+      {
+        label: "Ein return = ein Element",
+        description:
+          "Zwei Elemente nebeneinander brauchen eine Hülle: ein <div> oder ein leeres Fragment <>...</>.",
+        code: `return (
+  <>
+    <h1>Titel</h1>
+    <p>Text</p>
+  </>
+);`,
+      },
+      {
+        label: "Die wichtigste Frage: einmal oder pro Element?",
+        description:
+          "Wo eine Zeile steht, entscheidet, wie oft sie gebaut wird. Außerhalb von .map() einmal, innerhalb pro Eintrag. Bei jedem Stück JSX kurz fragen — die Antwort sagt dir, wo es hingehört.",
+        code: `{aktiv && (
+  <div>
+    <h1>{aktiv.title}</h1>                {/* EINMAL */}
+    <button onClick={...}>Zurück</button> {/* EINMAL */}
+
+    {aktiv.entries.map((entry) => (
+      <div key={entry.label}>             {/* PRO EINTRAG */}
+        <h2>{entry.label}</h2>
+      </div>
+    ))}
+  </div>
+)}`,
+      },
+      {
+        label: "Loading / Error / Empty — das Standardmuster",
+        description:
+          "Drei Zustände, die jede Liste braucht. Ein Status-State statt drei einzelner Booleans ist übersichtlicher, weil sich die Zustände gegenseitig ausschließen.",
+        code: `const [status, setStatus] = useState<"loading" | "success" | "error">(
+  "loading",
+);
+
+// im JSX:
+{status === "loading" && <p>Lädt...</p>}
+{status === "error" && <p>Fehler beim Laden.</p>}
+{status === "success" && tasks.length === 0 && <p>Keine Tasks</p>}
+{status === "success" &&
+  tasks.map((task) => <TaskItem key={task.id} task={task} />)}`,
+      },
+      {
+        label: "className bedingt setzen",
+        description:
+          "Das ? : funktioniert auch bei Klassennamen — praktisch für aktive Zustände.",
+        code: `<button
+  className={istAktiv ? "btn aktiv" : "btn"}
+>`,
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "useeffect",
+    title: "useEffect",
+    layout: "liste",
+    entries: [
+      {
+        label: "Wofür useEffect da ist",
+        description:
+          "Für alles, was NICHT direkt beim Anzeigen passiert: Daten laden, localStorage schreiben, Timer starten. Die Komponente rendert erst — und danach läuft der Effekt. Faustregel: Alles, was mit der Außenwelt spricht, gehört in useEffect.",
+        code: `useEffect(() => {
+  // was passieren soll
+}, [abhaengigkeiten]);`,
+      },
+      {
+        label: "Das Array am Ende — der wichtigste Teil",
+        description:
+          "Es sagt, WANN der Effekt läuft. Leeres Array: nur einmal beim ersten Anzeigen. Mit Werten drin: immer, wenn sich einer davon ändert. Ganz weglassen: nach JEDEM Rendern — das führt fast immer zu einer Endlosschleife.",
+        code: `useEffect(() => { ... }, []);         // einmal am Anfang
+useEffect(() => { ... }, [token]);    // wenn token sich ändert
+useEffect(() => { ... });             // ❌ nach jedem Rendern`,
+      },
+      {
+        label: "Daten laden — das Standardmuster",
+        description:
+          "Die async-Funktion wird INNERHALB des Effekts definiert und dann aufgerufen. Der Effekt selbst darf nicht async sein. Der Guard oben verhindert Laden ohne Token.",
+        code: `useEffect(() => {
+  const loadTasks = async () => {
+    if (!token) return;
+
+    setStatus("loading");
+    try {
+      const response = await fetch("http://localhost:3000/tasks", {
+        headers: { Authorization: \`Bearer \${token}\` },
+      });
+
+      if (!response.ok) {
+        setStatus("error");
+        return;
+      }
+
+      const data = await response.json();
+      setTasks(data);
+      setStatus("success");
+    } catch (error) {
+      console.error(error);
+      setStatus("error");
+    }
+  };
+
+  loadTasks();
+}, [token]);`,
+      },
+      {
+        label: "Warum der Effekt selbst nicht async sein darf",
+        description:
+          "useEffect erwartet entweder nichts oder eine Aufräumfunktion als Rückgabe. Eine async-Funktion gibt aber immer ein Promise zurück — das verwirrt React. Deshalb: innen eine async-Funktion definieren und aufrufen.",
+        code: `useEffect(async () => { ... }, []);   // ❌
+
+useEffect(() => {                     // ✅
+  const laden = async () => { ... };
+  laden();
+}, []);`,
+      },
+      {
+        label: "localStorage synchron halten",
+        description:
+          "Immer wenn sich der Token ändert, wird er gespeichert oder gelöscht. Dadurch bleibt man beim Neuladen eingeloggt und ist nach dem Logout wirklich draußen.",
+        code: `useEffect(() => {
+  if (token) {
+    localStorage.setItem("token", token);
+  } else {
+    localStorage.removeItem("token");
+  }
+}, [token]);`,
+      },
+      {
+        label: "Aufräumen — die return-Funktion",
+        description:
+          "Gibst du im Effekt eine Funktion zurück, läuft sie beim Verlassen der Komponente. Wichtig bei Timern und Event-Listenern, sonst laufen die weiter, obwohl niemand mehr hinschaut.",
+        code: `useEffect(() => {
+  const timer = setInterval(() => {
+    console.log("tick");
+  }, 1000);
+
+  return () => clearInterval(timer);   // aufräumen
+}, []);`,
+      },
+      {
+        label: "Endlosschleife vermeiden",
+        description:
+          "Setzt du im Effekt einen State, der auch im Abhängigkeits-Array steht, ruft er sich selbst immer wieder auf. Merke: Was du im Effekt SETZT, darf nicht im Array stehen.",
+        code: `// ❌ Endlosschleife
+useEffect(() => {
+  setTasks([...]);
+}, [tasks]);
+
+// ✅
+useEffect(() => {
+  setTasks([...]);
+}, [token]);`,
+      },
+      {
+        label: "Wann du useEffect NICHT brauchst",
+        description:
+          "Werte, die du aus vorhandenem State ausrechnen kannst, brauchen keinen Effekt und keinen eigenen State. Einfach beim Rendern berechnen — das ist weniger Code und kann nicht auseinanderlaufen.",
+        code: `// ❌ unnötig
+const [gefiltert, setGefiltert] = useState([]);
+useEffect(() => {
+  setGefiltert(tasks.filter((t) => !t.done));
+}, [tasks]);
+
+// ✅ einfach berechnen
+const gefiltert = tasks.filter((t) => !t.done);`,
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "formulare",
+    title: "Formulare",
+    layout: "liste",
+    entries: [
+      {
+        label: "Controlled Input — das Grundprinzip",
+        description:
+          "Das Eingabefeld hat keinen eigenen Speicher. Der Wert kommt aus dem State (value), und jede Eingabe schreibt zurück in den State (onChange). Dadurch weiß React immer, was drinsteht. Fehlt onChange, kann man nichts tippen.",
+        code: `const [title, setTitle] = useState("");
+
+<input
+  type="text"
+  value={title}
+  onChange={(e) => setTitle(e.target.value)}
+  placeholder="Titel"
+/>`,
+      },
+      {
+        label: "Komplettes Formular",
+        description:
+          "e.preventDefault() verhindert, dass der Browser die Seite neu lädt — das ist sein Standardverhalten bei Formularen. Danach kommen Prüfung, Absenden und das Leeren der Felder.",
+        code: `function AddTaskForm({ onAddTask }: { onAddTask: (t: Task) => void }) {
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+  const [fehler, setFehler] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();          // kein Neuladen
+    setFehler("");
+
+    if (!title.trim()) {         // Guard Clause im Frontend
+      setFehler("Titel darf nicht leer sein");
+      return;
+    }
+
+    onAddTask({ title, text });  // nach oben melden
+
+    setTitle("");                // Felder leeren
+    setText("");
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        type="text"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Titel"
+      />
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Beschreibung"
+      />
+      <button type="submit">Hinzufügen</button>
+      {fehler && <p className="error">{fehler}</p>}
+    </form>
+  );
+}`,
+      },
+      {
+        label: "onSubmit statt onClick",
+        description:
+          "Am <form> onSubmit, am Button type='submit'. Dann funktioniert auch die Enter-Taste. Bei onClick am Button geht das nicht.",
+        code: `<form onSubmit={handleSubmit}>
+  ...
+  <button type="submit">Speichern</button>
+</form>`,
+      },
+      {
+        label: "Select — Auswahlliste",
+        description:
+          "Funktioniert wie ein Input: value aus dem State, onChange schreibt zurück. Bei einem Union-Type musst du mit 'as' nachhelfen, weil e.target.value für TypeScript nur ein string ist.",
+        code: `<select
+  value={filter}
+  onChange={(e) =>
+    setFilter(e.target.value as "all" | "done" | "notDone")
+  }
+>
+  <option value="all">Alle</option>
+  <option value="done">Erledigt</option>
+  <option value="notDone">Offen</option>
+</select>`,
+      },
+      {
+        label: "Checkbox",
+        description:
+          "Bei Checkboxen heißt es checked statt value, und der Wert steckt in e.target.checked statt e.target.value.",
+        code: `<input
+  type="checkbox"
+  checked={done}
+  onChange={(e) => setDone(e.target.checked)}
+/>`,
+      },
+      {
+        label: "Absenden mit Server — komplett",
+        description:
+          "Wenn das Formular direkt an den Server schickt: response.ok prüfen, Fehlermeldung anzeigen, und erst bei Erfolg weitermachen und leeren.",
+        code: `const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setFehler("");
+
+  const response = await fetch("http://localhost:3000/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    setFehler(data.error);
+    return;
+  }
+
+  onRegistered();
+};`,
+      },
+      {
+        label: ".trim() nicht vergessen",
+        description:
+          "Ein Feld mit nur Leerzeichen ist nicht leer — die Prüfung würde also durchgehen. trim() schneidet Leerzeichen vorne und hinten ab.",
+        code: `if (!title.trim()) {
+  setFehler("Titel darf nicht leer sein");
+  return;
+}`,
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "fetch",
+    title: "fetch & API",
+    layout: "liste",
+    entries: [
+      {
+        label: "fetch wirft NICHT bei Fehlern",
+        description:
+          "Der wichtigste Punkt. fetch wirft nur, wenn die Verbindung scheitert — kein Netz, Server aus. Ein 400 oder 500 ist für fetch ein Erfolg: Die Anfrage kam an, der Server hat geantwortet. Ob die Antwort eine Ablehnung war, musst DU prüfen. Ohne diese Prüfung zeigt dein Frontend 'Erfolg' bei jedem Fehler.",
+        code: `const response = await fetch(url);
+
+if (!response.ok) {          // true bei 200-299, sonst false
+  const data = await response.json();
+  setFehler(data.error);
+  return;
+}`,
+      },
+      {
+        label: "GET mit Token",
+        description:
+          "Die einfachste Anfrage. Der Token kommt in den Authorization-Header, mit 'Bearer ' davor. Kein method nötig — GET ist der Standard.",
+        code: `const response = await fetch("http://localhost:3000/tasks", {
+  headers: { Authorization: \`Bearer \${token}\` },
+});
+
+if (!response.ok) return;
+
+const data = await response.json();
+setTasks(data);`,
+      },
+      {
+        label: "POST mit Body",
+        description:
+          "Drei Dinge sind nötig: method, der Content-Type-Header (sonst versteht der Server den Body nicht) und JSON.stringify — denn über das Netz gehen nur Texte, keine Objekte.",
+        code: `const response = await fetch("http://localhost:3000/tasks", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: \`Bearer \${token}\`,
+  },
+  body: JSON.stringify({ title, text }),
+});`,
+      },
+      {
+        label: "PUT / PATCH / DELETE",
+        description:
+          "Die ID kommt in die URL. PUT und PATCH brauchen einen Body, DELETE nicht. Bei 204 gibt es keinen Inhalt — dann NICHT .json() aufrufen, das würde abstürzen.",
+        code: `// PUT
+await fetch(\`http://localhost:3000/tasks/\${id}\`, {
+  method: "PUT",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: \`Bearer \${token}\`,
+  },
+  body: JSON.stringify(task),
+});
+
+// DELETE — kein Body
+await fetch(\`http://localhost:3000/tasks/\${id}\`, {
+  method: "DELETE",
+  headers: { Authorization: \`Bearer \${token}\` },
+});`,
+      },
+      {
+        label: "Das komplette Muster mit allen Absicherungen",
+        description:
+          "So sieht eine saubere Funktion aus: try/catch für Netzwerkfehler, response.ok für HTTP-Fehler, und erst danach den State ändern. Erst wenn der Server bestätigt hat, wird der Bildschirm aktualisiert.",
+        code: `const handleAddTask = async (task: Task) => {
+  try {
+    const response = await fetch("http://localhost:3000/tasks", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: \`Bearer \${token}\`,
+      },
+      body: JSON.stringify(task),
+    });
+
+    if (!response.ok) {
+      setFehler("Task konnte nicht gespeichert werden");
+      return;
+    }
+
+    const savedTask = await response.json();
+    setTasks((prev) => [...prev, savedTask]);
+  } catch (error) {
+    console.error(error);
+    setFehler("Server nicht erreichbar");
+  }
+};`,
+      },
+      {
+        label: "JSON.stringify und .json()",
+        description:
+          "Über das Netz gehen nur Texte. stringify macht aus deinem Objekt einen Text zum Hinschicken, .json() macht aus dem empfangenen Text wieder ein Objekt. Beide Richtungen brauchst du.",
+        code: `body: JSON.stringify({ title })   // Objekt → Text
+const data = await response.json(); // Text → Objekt`,
+      },
+      {
+        label: "Warum .json() ein await braucht",
+        description:
+          "Die Antwort kommt in Stücken über das Netz. .json() wartet, bis alles da ist, und wandelt dann um. Deshalb ist es selbst wieder ein Warte-Vorgang.",
+      },
+      {
+        label: "Reihenfolge: erst Server, dann State",
+        description:
+          "Immer zuerst die Antwort abwarten und prüfen, dann den State ändern. Andersherum zeigt der Bildschirm etwas an, das der Server nie gespeichert hat — beim nächsten Neuladen ist es weg.",
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "komponenten",
+    title: "Komponenten & Props",
+    layout: "liste",
+    entries: [
+      {
+        label: "Props — Daten nach unten geben",
+        description:
+          "Eine Komponente ist eine Funktion, die JSX zurückgibt. Props sind ihre Parameter. Der Typ steht direkt dahinter oder in einem eigenen Interface.",
+        code: `interface TaskItemProps {
+  task: Task;
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+function TaskItem({ task, onToggle, onDelete }: TaskItemProps) {
+  return (
+    <div>
+      <span>{task.title}</span>
+      <button onClick={() => onToggle(task.id)}>Fertig</button>
+      <button onClick={() => onDelete(task.id)}>Löschen</button>
+    </div>
+  );
+}
+
+export default TaskItem;`,
+      },
+      {
+        label: "Callbacks — Ereignisse nach oben melden",
+        description:
+          "Daten fließen über Props nach unten, Ereignisse über Funktionen nach oben. Die Kindkomponente ruft nur onXyz() auf und weiß gar nicht, was daraufhin passiert — genau deshalb ist sie wiederverwendbar.",
+        code: `// Eltern gibt die Funktion runter
+<Register onRegistered={() => setRegisterSuccess(true)} />
+
+// Kind meldet nur "fertig"
+function Register({ onRegistered }: { onRegistered: () => void }) {
+  // ...
+  onRegistered();
+}`,
+      },
+      {
+        label: "Wo gehört State hin?",
+        description:
+          "So nah wie möglich an die Stelle, die ihn braucht. Braucht ihn nur eine Komponente, gehört er dorthin. Brauchen ihn mehrere oder eine höhere Ebene, muss er nach oben (Lifting State Up). Beispiel: Die Fehlermeldung eines Formulars gehört ins Formular. Die Erfolgsmeldung gehört nach oben, weil die Elternkomponente danach die Ansicht wechseln will.",
+      },
+      {
+        label: "Was im Block deklariert wird, lebt nur dort",
+        description:
+          "Ein const gilt nur innerhalb der geschweiften Klammern, in denen es steht. Deshalb kannst du eine Variable aus einem try nicht danach benutzen — und State aus einer Komponente nicht in einer anderen.",
+      },
+      {
+        label: "onClick will eine Funktion, keinen Aufruf",
+        description:
+          "Ohne () => wird die Funktion sofort ausgeführt, während React die Seite baut — nicht beim Klick. Ergebnis: Endlosschleife. Mit () => übergibst du eine Anleitung, die React aufhebt.",
+        code: `onClick={() => onDelete(task.id)}   // ✅
+onClick={onDelete(task.id)}         // ❌ läuft sofort
+onClick={handleClick}               // ✅ ohne Parameter auch ok`,
+      },
+      {
+        label: "import und export",
+        description:
+          "export ist die Erlaubnis, import die Anforderung — beides nötig. export default gibt es einmal pro Datei und wird ohne Klammern importiert. Benannte Exporte brauchen Klammern. Die Dateiendung lässt du weg.",
+        code: `// default
+export default TaskItem;
+import TaskItem from "./components/TaskItem";
+
+// benannt
+export { taskSchema, userSchema };
+import { taskSchema } from "./schemas";
+
+// Typen
+import type { Task } from "./types";`,
+      },
+      {
+        label: "Eigene Typen zentral ablegen",
+        description:
+          "Alles, was mehrere Dateien brauchen, kommt in eine types.ts. Dann gibt es eine einzige Wahrheit statt drei Kopien, die auseinanderlaufen.",
+        code: `// types.ts
+export interface Task {
+  id: string;
+  title: string;
+  text: string;
+  done: boolean;
+  categoryId?: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+}`,
+      },
+    ],
+  },
+
+  // ===================================================================
+  {
+    id: "typescript",
+    title: "TypeScript",
+    layout: "liste",
+    entries: [
+      {
+        label: "Interface — der Bauplan",
+        description:
+          "Beschreibt, wie ein Ding auszusehen hat. Erzeugt selbst keine Daten. Der Name steht immer in der Einzahl, weil er EIN Ding beschreibt.",
+        code: `interface Task {
+  id: string;
+  title: string;
+  done: boolean;
+  text?: string;      // ? = darf fehlen
+}`,
+      },
+      {
+        label: "[] heißt immer nur 'mehrere'",
+        description:
+          "Task ist eine Aufgabe, Task[] sind mehrere. Verschachteln ist nur das, was passiert, WENN du so ein Array als Feld in ein anderes Interface schreibst.",
+        code: `interface Topic {
+  title: string;
+  entries: Entry[];   // "hat mehrere Einträge"
+}`,
       },
       {
         label: "Die Übersetzungsregel",
         description:
-          "Sag den Satz laut und übersetz Wort für Wort. 'Mehrere X' wird zu X[]. 'Hat einen/eine/ein' wird eine normale Eigenschaft. 'Hat mehrere' wird ein Array als Eigenschaft. Das ist keine Kreativität, das ist Übersetzen.",
-        code: `// "Ich habe mehrere Themen. Jedes Thema hat einen Titel
-//  und hat mehrere Einträge."
-
-interface Entry {          // ein Eintrag — Name im Singular
-  label: string;
-  description: string;
-  code?: string;           // ? = darf fehlen
-}
-
-interface Topic {
-  id: string;
-  title: string;           // "hat einen Titel"
-  entries: Entry[];        // "hat mehrere Einträge"
-}`,
+          "Sag den Satz laut und übersetze Wort für Wort. 'Mehrere X' wird X[]. 'Hat einen/eine/ein' wird ein normales Feld. 'Hat mehrere' wird ein Array als Feld. Das ist kein Erfinden, das ist Übersetzen.",
       },
       {
-        label: "[] heißt immer nur Mehrzahl",
+        label: "{ } vs [ ] beim Schreiben von Daten",
         description:
-          "Entry ist ein Eintrag, Entry[] sind mehrere. Verschachteln ist nur das, was passiert, WENN du so ein Array als Eigenschaft in ein anderes Interface schreibst. Das [] selbst bedeutet nichts anderes als 'mehrere davon'.",
-      },
-      {
-        label: "Verschachteln oder über IDs verbinden",
-        description:
-          "Verschachteln, wenn das Kind immer und nur zu einem Elternteil gehört und nie allein gebraucht wird. Über IDs, wenn es auch allein gebraucht wird oder zu mehreren gehört. In einer Datenbank MUSS man IDs nehmen — eine Tabellenzelle kann keine Liste speichern. Deshalb hat Task eine userId. In einer TS-Datei darf ein Objekt eine Liste enthalten.",
-      },
-      {
-        label: "{ } vs [ ] beim Schreiben",
-        description:
-          "{ } ist ein Ding und bekommt Paare aus eigenschaft: wert. [ ] sind mehrere Dinge und bekommt nur nackte Werte ohne Namen. Jeder Eigenschaftsname braucht einen Doppelpunkt — egal ob danach Text, Zahl, { } oder [ ] kommt.",
-        code: `const crusaders: Team = {        // = nicht vergessen
-  name: "Crusaders",             // Komma, nicht Semikolon
-  spieler: [                     // Doppelpunkt auch vor [
+          "{ } ist EIN Ding und bekommt Paare aus name: wert. [ ] sind MEHRERE Dinge und bekommt nur nackte Werte. Jeder Feldname braucht einen Doppelpunkt — auch wenn danach eine Klammer kommt.",
+        code: `const team: Team = {          // = nicht vergessen
+  name: "Crusaders",          // Komma, nicht Semikolon
+  spieler: [                  // Doppelpunkt auch vor [
     { name: "Alex", nummer: 10 },
     { name: "Max", nummer: 7 },
   ],
@@ -606,113 +1582,49 @@ interface Topic {
       {
         label: "Interface-Syntax vs Daten-Syntax",
         description:
-          "Zwei verschiedene Sprachen, die nur ähnlich aussehen. Interface: keine Zuweisung, Trenner ist das Semikolon, nach dem Namen kommt ein Typ. Daten: = nötig, Trenner ist das Komma, nach dem Namen kommt ein Wert.",
+          "Zwei Sprachen, die nur ähnlich aussehen. Interface: kein =, Trenner ist das Semikolon, nach dem Namen kommt ein TYP. Daten: = nötig, Trenner ist das Komma, nach dem Namen kommt ein WERT.",
       },
       {
-        label: "Die Technik: folg dem Interface",
+        label: "Union mit |",
         description:
-          "Beim Ausfüllen nichts ausdenken. Das Interface sagt dir Zeile für Zeile, was zu tun ist — von außen nach innen, Ebene für Ebene. Immer beide Klammern sofort hinschreiben und dann reingehen, dann vergisst du keine.",
+          "Der Strich heißt 'oder'. Nur die aufgezählten Werte sind erlaubt. Besser als string, weil Tippfehler sofort auffallen und VS Code die Möglichkeiten vorschlägt.",
+        code: `type Status = "loading" | "success" | "error";
+const [aktiv, setAktiv] = useState<Task | null>(null);`,
       },
       {
-        label: "Union-Type mit |",
+        label: "?. und ??",
         description:
-          "Der senkrechte Strich heißt 'oder'. Nur die aufgezählten Werte sind erlaubt. Vorteil gegenüber string: Tippfehler fallen beim Schreiben auf, und VS Code schlägt die erlaubten Werte vor.",
-        code: `layout: "liste" | "tabelle";
-const [aktiv, setAktiv] = useState<Topic | null>(null);`,
+          "?. greift nur zu, wenn links nicht null ist — sonst kommt undefined statt einem Absturz. ?? liefert einen Ersatzwert bei null oder undefined. Achtung: || greift auch bei 0 und leerem Text, das ist eine klassische Bugquelle.",
+        code: `aktiv?.id                 // kein Absturz bei null
+task.text ?? "—"          // Ersatz nur bei null/undefined
+task.text || "—"          // greift auch bei "" und 0`,
+      },
+      {
+        label: "Die drei Punkte (Spread)",
+        description:
+          "Kippt den Inhalt aus. Bei Objekten alle Felder, bei Arrays alle Einträge. Was danach kommt, überschreibt das Vorherige — deshalb funktioniert damit das Ändern einzelner Felder.",
+        code: `const kopie = { ...task, done: true };    // alles + done geändert
+const neu = [...tasks, neueTask];         // alte Liste + eine neue
+const zusammen = [...listeA, ...listeB];  // zwei Listen`,
+      },
+      {
+        label: "Destructuring — auspacken",
+        description:
+          "Holt Felder aus einem Objekt in einzelne Variablen. Mit dem Rest-Operator kannst du gezielt eins weglassen — genau das machst du beim Passwort.",
+        code: `const { title, text } = req.body;
+const { password: _, ...rest } = user;   // password weglassen`,
       },
       {
         label: "number vs string",
         description:
           "Könntest du damit rechnen, vergleichen, sortieren? Dann number. Sieht aus wie eine Zahl, aber man rechnet nie damit — Postleitzahl, Telefonnummer? Dann string, sonst verschwinden führende Nullen.",
       },
-    ],
-  },
-
-  // =====================================================================
-  {
-    id: "8",
-    title: "React Grundlagen",
-    layout: "liste",
-    entries: [
       {
-        label: ".map() — Liste anzeigen",
+        label: "import type",
         description:
-          "Wandelt um und gibt zurück: Objekt rein, JSX raus, gleiche Anzahl. Du schreibst nie Buttons von Hand, sondern beschreibst einmal, wie EIN Button aus EINEM Objekt entsteht. forEach gibt nichts zurück — deshalb funktioniert nur .map() im JSX.",
-        code: `{topics.map((topic) => (
-  <button key={topic.id} onClick={() => setAktiv(topic)}>
-    {topic.title}
-  </button>
-))}
-
-// => ( )  gibt direkt zurück
-// => { }  braucht ein eigenes return, sonst bleibt die Liste leer`,
-      },
-      {
-        label: "key — warum nicht der Index",
-        description:
-          "React zeichnet nicht alles neu, sondern vergleicht alt und neu. Dafür braucht es pro Element ein Erkennungsmerkmal. Der Index ist die POSITION, keine Eigenschaft des Dings: Löschst du das erste Element, rutschen alle anderen hoch, und für React sieht es aus, als hätte sich der Inhalt geändert statt dass eins verschwunden ist. Bei Buttons fällt das nicht auf, bei Eingabefeldern landen Werte in der falschen Zeile. Die id klebt am Objekt, der Index an der Position.",
-      },
-      {
-        label: "useState — das Gedächtnis",
-        description:
-          "React zeichnet neu, indem es die Funktion komplett nochmal ausführt. Ein let wäre bei jedem Durchlauf wieder weg, und React würde gar nicht merken, dass sich etwas geändert hat. State löst beides: Der Wert überlebt das Neuzeichnen, und die Änderung löst es aus. Niemals direkt zuweisen — nur die set-Funktion sagt React 'zeichne neu'.",
-        code: `const [aktivesThema, setAktivesThema] = useState<Topic | null>(null);
-//     ^ lesen        ^ ändern                    ^ Typ      ^ Startwert`,
-      },
-      {
-        label: "onClick will eine Funktion, keinen Aufruf",
-        description:
-          "Ohne () => wird die Funktion sofort ausgeführt, während React die Seite baut — nicht beim Klick. Ergebnis: Endlosschleife. Mit () => übergibst du eine Anleitung, die React aufhebt und erst beim Klick ausführt.",
-        code: `onClick={() => setAktiv(topic)}    // ✅
-onClick={setAktiv(topic)}          // ❌ läuft sofort`,
-      },
-      {
-        label: "Ein return = ein Element",
-        description:
-          "Zwei Elemente nebeneinander ohne Umhüllung sind verboten. Wrapper nötig: ein <div> oder ein Fragment <>...</>.",
-      },
-      {
-        label: "Einmal oder pro Element?",
-        description:
-          "Die wichtigste Frage bei JSX. Wo eine Zeile steht, entscheidet, wie oft sie gebaut wird: außerhalb von .map() einmal, innerhalb pro Element. Bei jedem JSX-Stück kurz fragen — die Antwort sagt dir, wo es hingehört.",
-        code: `{aktiv && (
-  <div>
-    <h1>{aktiv.title}</h1>                  {/* EINMAL */}
-    <button onClick={...}>Zurück</button>   {/* EINMAL */}
-
-    {aktiv.entries.map((entry) => (
-      <div key={entry.label}>               {/* PRO EINTRAG */}
-        <h2>{entry.label}</h2>
-      </div>
-    ))}
-  </div>
-)}`,
-      },
-      {
-        label: "&& vs ? :",
-        description:
-          "&& = ob überhaupt: zeig es, oder zeig nichts. Nur ein Ausgang. ? : = welches von beiden: zeig entweder das eine oder das andere. Innerhalb des && weiß TypeScript, dass der Wert nicht null ist — deshalb darfst du dort .entries schreiben.",
-        code: `{aktiv && <div>...</div>}
-{istTabelle ? <Tabelle /> : <Liste />}`,
-      },
-      {
-        label: "?. und ??",
-        description:
-          "?. greift nur zu, wenn links nicht null ist — sonst kommt undefined statt einem Absturz. ?? liefert einen Ersatzwert, wenn links null oder undefined ist. Wichtig: ?? ist nicht dasselbe wie ||. Das || greift auch bei 0 und leerem Text, und das ist eine klassische Bugquelle.",
-        code: `aktiv?.id                     // kein Absturz, wenn aktiv null ist
-entry.example ?? "—"          // Ersatz nur bei null/undefined
-entry.example || "—"          // greift auch bei "" und 0`,
-      },
-      {
-        label: "import und export",
-        description:
-          "Jede Datei ist eine abgeschlossene Kiste. export ist die Erlaubnis, import die Anforderung — beides nötig. Die Dateiendung lässt du im Pfad weg, die ergänzt Vite. import type brauchst du bei strikter tsconfig für Interfaces, weil die nur zur Entwicklungszeit existieren und beim Bauen rausfliegen.",
-        code: `import { topics, type Topic } from "./data/topics";`,
-      },
-      {
-        label: "Daten gehören nicht in die Komponente",
-        description:
-          "Die Komponente soll Daten ANZEIGEN, nicht BESITZEN. Liegen sie in einer eigenen Datei, fasst du beim Ergänzen nur die Datendatei an und nie die Komponente.",
+          "Bei strenger Einstellung nötig, wenn du nur einen Typ importierst. Typen gibt es nur beim Programmieren — im fertigen Code sind sie weg. Das Schlüsselwort sagt dem Bauwerkzeug: kann rausgeworfen werden.",
+        code: `import type { Task } from "./types";
+import { topics, type Topic } from "./data/topics";`,
       },
     ],
   },
