@@ -13,7 +13,7 @@ export interface Topic {
 }
 
 export const topics: Topic[] = [
-  // ===================================================================
+  // Route komplett===================================================================
   {
     id: "route",
     title: "Route komplett",
@@ -221,7 +221,7 @@ app.listen(3000);`,
     ],
   },
 
-  // ===================================================================
+  // Guard Clauses===================================================================
   {
     id: "guards",
     title: "Guard Clauses",
@@ -326,7 +326,7 @@ if (Number.isNaN(id)) { ... }    // prüft genau das Gemeinte`,
     ],
   },
 
-  // ===================================================================
+  // try/catch & res===================================================================
   {
     id: "trycatch",
     title: "try/catch & res",
@@ -403,7 +403,7 @@ return res.status(500).json({ error: "Serverfehler" });`,
     ],
   },
 
-  // ===================================================================
+  // Prisma===================================================================
   {
     id: "prisma",
     title: "Prisma",
@@ -541,7 +541,7 @@ model Task {
     ],
   },
 
-  // ===================================================================
+  // Zod (Validierung)===================================================================
   {
     id: "zod",
     title: "Zod (Validierung)",
@@ -613,7 +613,7 @@ data: { email: result.data.email, password: hashedPassword }`,
     ],
   },
 
-  // ===================================================================
+  // Auth (Login & Token)===================================================================
   {
     id: "auth",
     title: "Auth (Login & Token)",
@@ -754,7 +754,7 @@ const response = await fetch("http://localhost:3000/tasks", {
     ],
   },
 
-  // ===================================================================
+  // REST & Statuscodes===================================================================
   {
     id: "rest",
     title: "REST & Statuscodes",
@@ -833,7 +833,7 @@ const response = await fetch("http://localhost:3000/tasks", {
     ],
   },
 
-  // ===================================================================
+  // useState===================================================================
   {
     id: "usestate",
     title: "useState",
@@ -905,7 +905,7 @@ tasks.push(neueTask);`,
     ],
   },
 
-  // ===================================================================
+  // Listen & Array-Methoden===================================================================
   {
     id: "listen",
     title: "Listen & Array-Methoden",
@@ -995,7 +995,7 @@ const anzahlOffen = tasks.reduce(
     ],
   },
 
-  // ===================================================================
+  // rendern===================================================================
   {
     id: "rendern",
     title: "Bedingtes Rendern",
@@ -1079,7 +1079,7 @@ const anzahlOffen = tasks.reduce(
     ],
   },
 
-  // ===================================================================
+  // useEffect===================================================================
   {
     id: "useeffect",
     title: "useEffect",
@@ -1197,7 +1197,7 @@ const gefiltert = tasks.filter((t) => !t.done);`,
     ],
   },
 
-  // ===================================================================
+  // Formulare===================================================================
   {
     id: "formulare",
     title: "Formulare",
@@ -1329,7 +1329,7 @@ const gefiltert = tasks.filter((t) => !t.done);`,
     ],
   },
 
-  // ===================================================================
+  // fetch & API===================================================================
   {
     id: "fetch",
     title: "fetch & API",
@@ -1441,7 +1441,7 @@ const data = await response.json(); // Text → Objekt`,
     ],
   },
 
-  // ===================================================================
+  // Komponenten & Props===================================================================
   {
     id: "komponenten",
     title: "Komponenten & Props",
@@ -1536,7 +1536,7 @@ export interface Category {
     ],
   },
 
-  // ===================================================================
+  // TypeScript===================================================================
   {
     id: "typescript",
     title: "TypeScript",
@@ -1625,6 +1625,114 @@ const { password: _, ...rest } = user;   // password weglassen`,
           "Bei strenger Einstellung nötig, wenn du nur einen Typ importierst. Typen gibt es nur beim Programmieren — im fertigen Code sind sie weg. Das Schlüsselwort sagt dem Bauwerkzeug: kann rausgeworfen werden.",
         code: `import type { Task } from "./types";
 import { topics, type Topic } from "./data/topics";`,
+      },
+    ],
+  },
+
+  // Sicherheit & ENV===================================================================
+  {
+    id: "sicherheit",
+    title: "Sicherheit & ENV",
+    layout: "liste",
+    entries: [
+      {
+        label: "Rate Limiting — wofür",
+        description:
+          "Begrenzt, wie viele Anfragen eine IP in einem Zeitfenster schicken darf. Danach kommt 429 Too Many Requests. Ohne Bremse kann jemand ein Skript bauen, das tausende Passwörter pro Minute durchprobiert — das nennt sich Brute-Force. Lokal egal, öffentlich gefährlich. Zweiter Grund: ungebremstes /register lässt jemanden die Datenbank mit Fake-Accounts fluten.",
+        code: `npm install express-rate-limit`,
+      },
+      {
+        label: "Zwei Limiter definieren",
+        description:
+          "Auth-Routen brauchen ein strengeres Limit als normale API-Aufrufe. 10 Logins in 15 Minuten sind viel, 10 Task-Abrufe wären lächerlich wenig. Beide Limiter stehen oben, direkt nach const app = express(), vor den Routen. Das 15 * 60 * 1000 schreibt man ausgerechnet hin, damit man beim Lesen sofort '15 Minuten' erkennt.",
+        code: `import rateLimit from "express-rate-limit";
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,   // Zeitfenster
+  max: 100,                   // Anfragen pro IP
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: "Zu viele Versuche. Bitte später erneut." },
+  standardHeaders: true,      // zeigt verbleibende Versuche
+  legacyHeaders: false,
+});`,
+      },
+      {
+        label: "Einbauen — global vs. pro Route",
+        description:
+          "app.use() ohne Pfad gilt für ALLE Routen und muss ÜBER ihnen stehen, weil Express die Datei von oben nach unten abarbeitet. Der strenge Limiter wird dagegen nicht global eingehängt, sondern nur in die zwei Auth-Routen geschrieben — genau an die Stelle, wo sonst requireAuth steht.",
+        code: `app.use(apiLimiter);        // gilt überall, VOR den Routen
+
+app.post("/login", authLimiter, async (req, res) => { ... });
+app.post("/register", authLimiter, async (req, res) => { ... });`,
+      },
+      {
+        label: "Testen ohne sich selbst auszusperren",
+        description:
+          "Nach dem Erreichen des Limits bist du selbst für die volle Zeit gesperrt. Zum Ausprobieren max kurz auf 3 setzen, testen, danach wieder hochdrehen.",
+      },
+      {
+        label: "ENV — wofür",
+        description:
+          "Ein Wert, der von außen kommt statt im Code zu stehen. Derselbe Code läuft dann lokal und in der Cloud, nur mit anderen Werten. Ohne das steht die Backend-Adresse acht Mal fest verdrahtet im Frontend — nach dem Deploy klopft es weiter bei dir zu Hause an.",
+      },
+      {
+        label: "ENV im Frontend (Vite)",
+        description:
+          "Zwei Regeln. Erstens: Der Name MUSS mit VITE_ beginnen, sonst ignoriert Vite ihn. Zweitens: Alles im Frontend ist öffentlich — Vite backt die Werte beim Build in die JavaScript-Datei ein, jeder kann sie im Browser lesen. Genau dafür ist das Präfix da: Du sollst bewusst entscheiden, was raus darf. Ins Frontend gehören nur Adressen, niemals Passwörter oder Keys.",
+        code: `# .env  (im client-Ordner, keine Anführungszeichen)
+VITE_API_URL=http://localhost:3000`,
+      },
+      {
+        label: "Zentrale Konstante statt überall import.meta.env",
+        description:
+          "Eine eigene config.ts, damit der Zugriff nur an einer Stelle steht. Gleiche Idee wie bei den Daten: Der Wert wohnt an einem Ort, alle anderen importieren ihn. Wichtig: import.meta.env, NICHT process.env — das ist Node.",
+        code: `// src/config.ts
+export const API_URL = import.meta.env.VITE_API_URL;
+
+// in den Komponenten
+import { API_URL } from "./config";        // aus src/
+import { API_URL } from "../config";       // aus src/components/
+
+await fetch(\`\${API_URL}/tasks\`, { ... });`,
+      },
+      {
+        label: "Backticks nicht vergessen",
+        description:
+          "Sobald eine Variable im String steht, brauchst du Backticks statt Anführungszeichen. Sonst rufst du wörtlich die Adresse ${API_URL}/tasks auf.",
+        code: `fetch("\${API_URL}/tasks")     // ❌ normaler Text
+fetch(\`\${API_URL}/tasks\`)     // ✅`,
+      },
+      {
+        label: "Dev-Server neu starten",
+        description:
+          "Vite liest die .env nur beim Start. Nach dem Anlegen oder Ändern immer neu starten, sonst ist der Wert undefined. Zum Prüfen: console.log(API_URL) — steht da undefined, liegt die Datei falsch oder der Server lief noch.",
+      },
+      {
+        label: ".gitignore — .env gehört nicht ins Repo",
+        description:
+          "Das Ausrufezeichen ist eine Ausnahme: 'doch mitnehmen'. Ohne die dritte Zeile würde .env.* auch die Vorlage schlucken. Die .env.example kommt ins Repo, damit man sieht, welche Variablen nötig sind — und damit du selbst in drei Monaten noch weißt, was fehlt.",
+        code: `# .gitignore
+.env
+.env.*
+!.env.example`,
+      },
+      {
+        label: "gitignore wirkt nur auf unbekannte Dateien",
+        description:
+          "Wurde eine Datei schon einmal committet, verfolgt Git sie weiter — die .gitignore hilft dann nicht mehr. Erst aus dem Tracking nehmen, dann greift sie. Das --cached löscht nur die Verfolgung, nicht die Datei selbst.",
+        code: `git ls-files | findstr .env      # prüfen, ob drin
+git rm --cached server/.env      # aus dem Tracking nehmen
+git commit -m "env entfernt"
+git push`,
+      },
+      {
+        label: "Was nie ins Repo darf",
+        description:
+          "JWT_SECRET, Datenbank-Adressen mit Passwort, API-Keys, node_modules und dist. Die letzten beiden nicht wegen Geheimhaltung, sondern weil sie aus dem Quellcode entstehen — der Server baut sie beim Deploy selbst.",
       },
     ],
   },
