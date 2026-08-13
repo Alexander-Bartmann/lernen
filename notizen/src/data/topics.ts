@@ -1736,4 +1736,284 @@ git push`,
       },
     ],
   },
+
+  // Deployment===================================================================
+  {
+    id: "deployment",
+    title: "Deployment",
+    layout: "liste",
+    entries: [
+      {
+        label: "Die drei Teile",
+        description:
+          "Eine Fullstack-App geht nicht als Ganzes online, sondern in drei Teilen an drei Orten. Datenbank (Neon) ist meist schon in der Cloud. Backend braucht einen Dienst, der einen dauerhaft laufenden Prozess erlaubt (Render, Railway). Frontend sind nur fertige Dateien, die ausgeliefert werden (Netlify, Vercel).",
+        code: `Datenbank   →  Neon      (läuft schon)
+Backend     →  Render    (dauerhafter Prozess)
+Frontend    →  Netlify   (statische Dateien)`,
+      },
+      {
+        label: "Reihenfolge: Backend zuerst",
+        description:
+          "Das Frontend braucht die Backend-Adresse für seine VITE_API_URL. Die kennst du erst, wenn das Backend läuft. Andersherum müsstest du zweimal ran.",
+      },
+      {
+        label: "Warum Netlify das Backend nicht kann",
+        description:
+          "Netlify und Vercel liefern fertige Dateien aus und können kurze Funktionen ausführen. Ein Express-Server ist etwas anderes: ein Prozess, der dauerhaft läuft und auf einem Port lauscht. Dafür braucht es einen anderen Diensttyp.",
+      },
+      {
+        label: "PORT muss von außen kommen",
+        description:
+          "Der Hoster bestimmt selbst, auf welchem Port dein Server lauschen soll, und teilt das über eine Umgebungsvariable mit. Steht die 3000 fest im Code, findet der Hoster deinen Server nicht. Lokal gibt es die Variable nicht, deshalb der Ersatzwert.",
+        code: `const port = process.env.PORT ?? 3000;
+
+app.listen(port, () => {
+  console.log(\`Server läuft auf Port \${port}\`);
+});
+
+// Im Log siehst du dann z.B. "Port 10000" — der Beweis,
+// dass es ohne den Umbau nicht funktioniert hätte.`,
+      },
+      {
+        label: "dev vs. build vs. start",
+        description:
+          "Zum Entwickeln übersetzt tsx den TypeScript-Code im Flug und startet bei jeder Änderung neu. Auf einem Server will man das nicht: Dort wird EINMAL übersetzt (build) und dann läuft das Ergebnis (start). Der Hoster fragt nach beiden Befehlen.",
+        code: `"scripts": {
+  "dev": "tsx watch src/index.ts",
+  "build": "prisma generate && tsc",
+  "start": "node dist/index.js"
+}
+
+// prisma generate: der Client liegt nicht im Repo,
+//   muss auf dem Server neu erzeugt werden
+// tsc: übersetzt TypeScript nach JavaScript
+// start: Node führt das fertige JavaScript aus`,
+      },
+      {
+        label: "tsconfig fürs Bauen vorbereiten",
+        description:
+          "Die Standard-tsconfig ist nur fürs Entwickeln gedacht. Zum Bauen braucht tsc drei Angaben: woher, wohin, und welche Dateien überhaupt. Ohne include nimmt TypeScript ALLE .ts-Dateien im Projekt — auch die, die außerhalb von src liegen, und beschwert sich dann.",
+        code: `{
+  "compilerOptions": {
+    "rootDir": "./src",       // woher
+    "outDir": "./dist",       // wohin
+    "types": ["node"]         // damit process.env bekannt ist
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}`,
+      },
+      {
+        label: "Root Directory bei Monorepos",
+        description:
+          "Liegen client und server nebeneinander in einem Repo, sucht der Hoster die package.json standardmäßig im obersten Ordner und findet nichts. Deshalb überall den Unterordner angeben.",
+        code: `// Render (Backend)
+Root Directory:     server
+Build Command:      npm install && npm run build
+Start Command:      npm start
+
+// Netlify (Frontend)
+Base directory:     client
+Build command:      npm run build
+Publish directory:  client/dist`,
+      },
+      {
+        label: "WICHTIG: Frontend-ENV wird beim BAUEN eingebacken",
+        description:
+          "Der Punkt, der am meisten Zeit kostet. Vite ersetzt import.meta.env beim Build durch den festen Wert und schreibt ihn in die JavaScript-Datei. Setzt du die Variable NACH dem Build, ändert sich gar nichts — der alte Wert steckt schon drin. Nach jeder ENV-Änderung muss also neu gebaut werden. Beim Backend ist es anders: process.env wird beim LAUFEN gelesen, da reicht ein Neustart.",
+        code: `Frontend (Vite)   →  Wert wird beim BUILD eingebacken
+                     →  ENV geändert? Neu bauen!
+
+Backend (Node)    →  Wert wird beim LAUFEN gelesen
+                     →  ENV geändert? Neustart reicht.`,
+      },
+      {
+        label: "Eine .env im Repo überschreibt die Hoster-Einstellungen",
+        description:
+          "Findet der Hoster beim Bauen eine .env-Datei im Projekt, hat die Vorrang vor dem, was du in der Oberfläche eingetragen hast. Deshalb gehört sie nie ins Repo — nicht nur wegen Geheimhaltung, sondern weil sie sonst still die falschen Werte durchsetzt.",
+      },
+      {
+        label: "Der Hoster baut nur bei neuem Commit",
+        description:
+          "Gleicher Commit wie beim letzten Mal? Dann werden einfach die alten Dateien wiederverwendet — im Log steht dann 'All files already uploaded'. Nur ENV zu ändern reicht nicht. Ein leerer Commit erzwingt einen echten Neubau.",
+        code: `git commit --allow-empty -m "trigger rebuild"
+git push`,
+      },
+      {
+        label: "CORS einschränken",
+        description:
+          "Ein leeres cors() erlaubt JEDER Website der Welt, deine API aufzurufen. Lokal egal, online nicht. Nach dem Deploy trägst du die Frontend-Adresse als Umgebungsvariable ein — Rückfall auf localhost fürs Entwickeln. Achtung: Läuft Vite mal auf 5174 statt 5173 (weil 5173 belegt war), blockt CORS auch lokal.",
+        code: `app.use(cors({
+  origin: process.env.FRONTEND_URL ?? "http://localhost:5173",
+}));`,
+      },
+      {
+        label: "Kaltstart beim Gratis-Tarif",
+        description:
+          "Nach etwa 15 Minuten ohne Anfrage schläft der Server ein. Der nächste Aufruf weckt ihn, das dauert 30–60 Sekunden. Kein Fehler — aber gut zu wissen, wenn man den Link verschickt. Der Ladezustand im Frontend deckt das ab.",
+      },
+      {
+        label: "netlify.toml — Konfiguration im Repo",
+        description:
+          "Statt alles in der Oberfläche einzustellen, kann die Konfiguration als Datei im Projekt liegen. Vorteil: Sie ist versioniert, und eine Änderung daran erzeugt automatisch einen neuen Commit — also auch einen echten Neubau.",
+        code: `# client/netlify.toml
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  VITE_API_URL = "https://mein-backend.onrender.com"`,
+      },
+      {
+        label: "Zugriff auf das Repo freigeben",
+        description:
+          "Der Hoster sieht nur die Repos, für die du ihm beim Verbinden die Erlaubnis gegeben hast. Ein neues Repo taucht deshalb nicht automatisch auf — auch wenn es öffentlich ist. Nachträglich: GitHub → Settings → Applications → die App → Configure.",
+      },
+      {
+        label: "Checkliste vor dem Deploy",
+        description:
+          "Alles, was vorher stimmen muss. Der letzte Punkt ist der, den man am ehesten vergisst.",
+        code: `☐ PORT aus process.env, mit Rückfallwert
+☐ build- und start-Skript in package.json
+☐ tsconfig: rootDir, outDir, include, types
+☐ npm run build läuft lokal fehlerfrei durch
+☐ npm start startet den gebauten Server
+☐ .env, node_modules, dist in .gitignore
+☐ CORS auf die Frontend-Adresse eingeschränkt
+☐ ALLE fetch-Aufrufe nutzen die ENV-Variable
+   (auch Login und Register, nicht nur App.tsx!)`,
+      },
+    ],
+  },
+
+  // Debugging===================================================================
+  {
+    id: "debugging",
+    title: "Debugging",
+    layout: "liste",
+    entries: [
+      {
+        label: "Die Grundregel",
+        description:
+          "Nicht raten, nicht wild herumprobieren. Fehlermeldung lesen → Vermutung aufstellen → EINE Sache ändern → prüfen. Änderst du drei Dinge gleichzeitig und es geht, weißt du nicht, welche davon es war — und beim nächsten Mal stehst du wieder da.",
+      },
+      {
+        label: "Die Fehlermeldung sagt fast immer, was los ist",
+        description:
+          "Meldungen wirken lang und abschreckend, enthalten aber meist die Antwort im Klartext. Lies sie ZWEIMAL und such nach: Was wurde versucht? Was war erwartet? Was kam stattdessen? Beispiel unten — da steht wörtlich drin, dass 5174 anfragt, der Server aber nur 5173 erlaubt.",
+        code: `Access to fetch at '.../login'
+from origin 'http://localhost:5174'
+blocked by CORS policy:
+'Access-Control-Allow-Origin' has a value 'http://localhost:5173'
+that is not equal to the supplied origin.
+
+// Also: Server erlaubt 5173, Anfrage kommt von 5174.`,
+      },
+      {
+        label: "WO steht der Fehler? Drei Orte",
+        description:
+          "Der häufigste Anfängerfehler ist, am falschen Ort zu suchen. console.error im Backend erscheint NICHT im Browser — es steht im Terminal, wo der Server läuft. Und ein Build-Fehler steht weder im einen noch im anderen, sondern im Deploy-Log beim Hoster.",
+        code: `Browser-Konsole (F12)   →  Frontend-Fehler, fetch, React
+Server-Terminal         →  console.error, Prisma, Express
+Deploy-Log beim Hoster  →  Build-Fehler, fehlende ENV
+VS Code Problems-Panel  →  TypeScript beim Schreiben`,
+      },
+      {
+        label: "Der Network-Tab ist dein bester Freund",
+        description:
+          "F12 → Network. Dort siehst du jede Anfrage: wohin sie ging, welchen Status sie bekam und was zurückkam. Das beantwortet die wichtigste Frage bei API-Problemen: Liegt es am Frontend oder am Backend?",
+        code: `Anfrage taucht gar nicht auf   →  Frontend ruft nicht auf
+Geht an die falsche Adresse    →  ENV oder hartkodierte URL
+Status 401                     →  Token fehlt oder ist abgelaufen
+Status 404                     →  Route falsch oder Datensatz weg
+Status 500                     →  Backend-Log ansehen
+CORS-Fehler                    →  Server erlaubt diese Adresse nicht`,
+      },
+      {
+        label: "Trick: Ändert sich der Dateiname?",
+        description:
+          "Vite hängt an jede gebaute Datei einen Code aus dem Inhalt an — index-0sHOrdyr.js. Gleicher Inhalt heißt gleicher Code. Steht nach einem angeblichen Neubau derselbe Dateiname da, wurde in Wahrheit nichts neu gebaut. Damit lässt sich in Sekunden klären, ob ein Deploy überhaupt gewirkt hat.",
+      },
+      {
+        label: "Frage 1: Was hat sich zuletzt geändert?",
+        description:
+          "Ging es vorher und geht jetzt nicht mehr, liegt es fast immer an der letzten Änderung. Nicht das ganze Projekt durchsuchen — bei der letzten Änderung anfangen. Bei Git hilft git diff oder ein Blick in den letzten Commit.",
+      },
+      {
+        label: "Frage 2: Kommt der Code überhaupt hier an?",
+        description:
+          "Bevor du eine Zeile analysierst, prüf, ob sie ausgeführt wird. Ein console.log an der Stelle beantwortet das sofort. Erscheint nichts, liegt der Fehler WEITER OBEN — eine Guard Clause hat abgebrochen, eine Bedingung war falsch, die Funktion wurde nie aufgerufen.",
+        code: `console.log("bin hier", { userId, id });
+
+// Sinnvoller als ein nacktes console.log("test"):
+// Du siehst gleich, welche Werte tatsächlich ankommen.`,
+      },
+      {
+        label: "Frage 3: Hat die Variable den erwarteten Wert?",
+        description:
+          "Sehr viele Fehler sind in Wahrheit undefined an einer Stelle, wo ein Wert erwartet wird. Ein vergessenes await, ein Tippfehler im Feldnamen, eine ENV, die nicht geladen wurde. Ausgeben und nachsehen kostet zehn Sekunden.",
+        code: `console.log(API_URL);        // undefined? → .env / Neustart
+console.log(req.body);       // leer? → express.json() fehlt
+console.log(result.error);   // was genau lehnt Zod ab?`,
+      },
+      {
+        label: "Häufige Meldungen und was sie heißen",
+        description:
+          "Diese Handvoll deckt den Großteil ab. Die meisten davon hatten wir schon.",
+        code: `"Cannot read properties of undefined"
+  → Wert ist undefined. await vergessen? Tippfehler?
+
+"Cannot set headers after they are sent"
+  → return in einer Guard Clause vergessen
+
+"net::ERR_CONNECTION_REFUSED"
+  → Server läuft nicht oder falsche Adresse
+
+"blocked by CORS policy"
+  → Server erlaubt diese Herkunft nicht
+
+"is not under rootDir"
+  → include in der tsconfig fehlt
+
+"Failed to fetch"
+  → Sammelmeldung: CORS, Server aus, oder falsche URL.
+     Details stehen in der Zeile DARÜBER.`,
+      },
+      {
+        label: "Wenn nichts hilft: halbieren",
+        description:
+          "Bei unklaren Fehlern das Problem in zwei Hälften teilen und prüfen, in welcher er steckt. Geht die API mit Postman? Dann liegt es am Frontend. Geht es lokal, aber nicht live? Dann an der Umgebung, nicht am Code. So kommst du in wenigen Schritten zur Ursache statt alles auf einmal zu durchsuchen.",
+      },
+      {
+        label: "Zwischen Frontend und Backend eingrenzen",
+        description:
+          "Die wichtigste Halbierung überhaupt. Ruf die Backend-URL direkt im Browser auf oder nimm Postman. Kommt dort die erwartete Antwort, ist das Backend in Ordnung und der Fehler liegt im Frontend.",
+        code: `// Im Browser aufrufen:
+https://mein-backend.onrender.com/
+
+// Kommt "Server läuft"? → Backend ist oben.
+// Kommt nichts? → Backend-Log ansehen.`,
+      },
+      {
+        label: "Lokal vs. live",
+        description:
+          "Läuft es lokal, aber nicht live, ist es fast nie der Code — sondern eine Umgebungsdifferenz: ENV-Variable fehlt, falscher Ordner konfiguriert, Build nicht neu gelaufen, CORS zeigt auf die falsche Adresse. Erst dort suchen, bevor du im Code wühlst.",
+      },
+      {
+        label: "Cache ausschließen",
+        description:
+          "Der Browser hält alte JavaScript-Dateien fest. Bevor du einen Fehler jagst, der vielleicht längst behoben ist: privates Fenster öffnen (Strg+Shift+N) oder in den Devtools unter Network das Häkchen 'Disable cache' setzen.",
+      },
+      {
+        label: "Das Problems-Panel hinkt manchmal hinterher",
+        description:
+          "VS Code zeigt dort teils noch alte Fehler an, obwohl die Datei längst korrigiert ist. Was zählt, ist die Ausgabe im Terminal. Zum Auffrischen: Strg+Shift+P → 'TypeScript: Restart TS Server'.",
+      },
+      {
+        label: "Fehler sind Information, kein Rückschlag",
+        description:
+          "Eine rote Meldung heißt, dass etwas Konkretes nicht passt — und sie sagt dir meistens auch, was. Das ist deutlich besser als Code, der stillschweigend das Falsche tut. Beim Deployment sind mehrere Anläufe der Normalfall, nicht das Zeichen eines Problems.",
+      },
+    ],
+  },
 ];
