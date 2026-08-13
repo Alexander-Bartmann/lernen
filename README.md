@@ -2,7 +2,7 @@
 
 Persönliches Nachschlagewerk für React, TypeScript und Backend-Themen. Themen werden per Button aufgerufen und als Liste oder Tabelle dargestellt.
 
-**Live:** https://alex-notizen.netlify.app
+**Live:** https://alex-lernen.netlify.app
 
 ![Notizen Screenshot](./image.png)
 ---
